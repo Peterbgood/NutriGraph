@@ -208,7 +208,7 @@ const CalorieTracker: React.FC = () => {
                       <div className="flex flex-wrap gap-2">
                         {cat.items.map((item, i) => (
                           <button key={i} onClick={() => handleSaveFood(item.name, item.calories)} className="bg-white border border-gray-100 text-gray-600 px-4 py-2 rounded-xl text-xs font-bold hover:border-blue-600 hover:text-blue-600 transition-all shadow-sm">
-                            {item.name} <span className="text-blue-300 ml-1 font-black">{item.calories}</span>
+                            {item.name} <span className="text-blue-600 ml-1 font-black">{item.calories}</span>
                           </button>
                         ))}
                       </div>
