@@ -26,6 +26,8 @@ const CalorieTracker: React.FC = () => {
   const [calories, setCalories] = useState('');
   const [weight, setWeight] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [showWeightLog, setShowWeightLog] = useState(false);
 
   useEffect(() => {
     const q = query(collection(db, "health_logs"), orderBy("sortOrder", "asc"));
@@ -38,7 +40,6 @@ const CalorieTracker: React.FC = () => {
 
   const getGoalForDate = (dateStr: string) => {
     const day = new Date(dateStr + 'T00:00:00').getDay();
-    // Friday (5), Saturday (6), Sunday (0) = 2400. Else 1700.
     return (day === 0 || day === 5 || day === 6) ? 2400 : 1700;
   };
 
@@ -46,7 +47,6 @@ const CalorieTracker: React.FC = () => {
     return logs.filter(l => l.date === selectedDate && l.type === 'food').reduce((s, l) => s + l.calories, 0);
   }, [logs, selectedDate]);
 
-  // --- Rolling Surplus Logic ---
   const rollingSurplus = useMemo(() => {
     const selDateObj = new Date(selectedDate + 'T00:00:00');
     const startOfWeek = new Date(selDateObj);
@@ -56,34 +56,55 @@ const CalorieTracker: React.FC = () => {
 
     let net = 0;
     const currentIter = new Date(startOfWeek);
-    
     while (currentIter <= selDateObj) {
       const dStr = getLocalDate(currentIter);
-      const dayGoal = getGoalForDate(dStr);
-      const dayConsumed = logs.filter(l => l.date === dStr && l.type === 'food').reduce((s, l) => s + l.calories, 0);
-      
-      net += (dayGoal - dayConsumed);
+      net += (getGoalForDate(dStr) - logs.filter(l => l.date === dStr && l.type === 'food').reduce((s, l) => s + l.calories, 0));
       currentIter.setDate(currentIter.getDate() + 1);
     }
     return net;
   }, [logs, selectedDate]);
 
-  // --- Record High/Low Weeks ---
+  // Record High/Low Calories for the small header labels
   const records = useMemo(() => {
     const weekMap: Record<string, number> = {};
     logs.filter(l => l.type === 'food').forEach(l => {
       const d = new Date(l.date + 'T00:00:00');
       const start = new Date(d);
-      const dayNum = d.getDay();
-      start.setDate(d.getDate() - (dayNum === 0 ? 6 : dayNum - 1));
+      start.setDate(d.getDate() - (d.getDay() === 0 ? 6 : d.getDay() - 1));
       const weekKey = getLocalDate(start);
       weekMap[weekKey] = (weekMap[weekKey] || 0) + l.calories;
     });
     const totals = Object.values(weekMap);
+    return { highest: totals.length ? Math.max(...totals) : 0, lowest: totals.length ? Math.min(...totals) : 0 };
+  }, [logs]);
+
+  // --- Lifetime Weight Records ---
+  const lifetimeWeightRecords = useMemo(() => {
+    const weights = logs.filter(l => l.type === 'weight').map(l => l.weight);
     return {
-      highest: totals.length ? Math.max(...totals) : 0,
-      lowest: totals.length ? Math.min(...totals) : 0
+      min: weights.length ? Math.min(...weights) : 0,
+      max: weights.length ? Math.max(...weights) : 0
     };
+  }, [logs]);
+
+  // --- Weight Grouping Logic ---
+  const groupedWeights = useMemo(() => {
+    const weightLogs = logs.filter(l => l.type === 'weight').sort((a, b) => b.date.localeCompare(a.date));
+    const groups: Record<number, { weekNum: number, logs: HealthLog[], min: number, max: number }> = {};
+
+    weightLogs.forEach(l => {
+      const date = new Date(l.date + 'T00:00:00');
+      const startOfYear = new Date(date.getFullYear(), 0, 1);
+      const weekNum = Math.ceil((((date.getTime() - startOfYear.getTime()) / 86400000) + startOfYear.getDay() + 1) / 7);
+      
+      if (!groups[weekNum]) {
+        groups[weekNum] = { weekNum, logs: [], min: Infinity, max: -Infinity };
+      }
+      groups[weekNum].logs.push(l);
+      groups[weekNum].min = Math.min(groups[weekNum].min, l.weight);
+      groups[weekNum].max = Math.max(groups[weekNum].max, l.weight);
+    });
+    return Object.values(groups).sort((a, b) => b.weekNum - a.weekNum);
   }, [logs]);
 
   const handleSaveFood = async (f: string, c: string | number) => {
@@ -111,19 +132,32 @@ const CalorieTracker: React.FC = () => {
     await updateDoc(doc(db, "health_logs", target.id!), { sortOrder: current.sortOrder });
   };
 
-  const weekChartData = useMemo(() => {
+  const { weekChartData, weeklyAverage } = useMemo(() => {
     const start = new Date();
     start.setDate(start.getDate() - (start.getDay() === 0 ? 6 : start.getDay() - 1) + (viewingWeekOffset * 7));
     const labels = []; const values = []; const colors = [];
+    let sum = 0;
+    let daysWithLogs = 0;
+
     for (let i = 0; i < 7; i++) {
       const d = new Date(start); d.setDate(d.getDate() + i);
       const dStr = getLocalDate(d);
-      const dayTotal = logs.filter(l => l.date === dStr && l.type === 'food').reduce((s, l) => s + l.calories, 0);
+      const dayFoodLogs = logs.filter(l => l.date === dStr && l.type === 'food');
+      const dayTotal = dayFoodLogs.reduce((s, l) => s + l.calories, 0);
+      
       labels.push(d.toLocaleDateString('en-US', { weekday: 'short' }));
       values.push(dayTotal);
       colors.push(dayTotal > getGoalForDate(dStr) ? '#ef4444' : '#3b82f6');
+      
+      if (dayFoodLogs.length > 0) {
+        sum += dayTotal;
+        daysWithLogs++;
+      }
     }
-    return { labels, datasets: [{ data: values, backgroundColor: colors, borderRadius: 6 }] };
+    return { 
+      weekChartData: { labels, datasets: [{ data: values, backgroundColor: colors, borderRadius: 6 }] },
+      weeklyAverage: daysWithLogs > 0 ? Math.round(sum / daysWithLogs) : 0
+    };
   }, [logs, viewingWeekOffset]);
 
   const weightTrendData = useMemo(() => {
@@ -186,9 +220,17 @@ const CalorieTracker: React.FC = () => {
                         <div className="text-[10px] font-black text-blue-600 tracking-wider uppercase">{l.calories} KCAL</div>
                       </div>
                     </div>
-                    <div className="flex gap-3 md:gap-4 opacity-100 md:opacity-0 md:group-hover:opacity-100">
+                    <div className="flex gap-3 md:gap-4 opacity-100 md:opacity-0 md:group-hover:opacity-100 items-center">
                       <button onClick={() => { setEditingId(l.id!); setFood(l.food); setCalories(l.calories.toString()); }} className="text-[10px] font-black text-gray-400 hover:text-blue-600">EDIT</button>
-                      <button onClick={() => deleteDoc(doc(db, "health_logs", l.id!))} className="text-[10px] font-black text-gray-400 hover:text-red-500">DELETE</button>
+                      
+                      {confirmDeleteId === l.id ? (
+                        <div className="flex gap-2">
+                          <button onClick={() => { deleteDoc(doc(db, "health_logs", l.id!)); setConfirmDeleteId(null); }} className="text-[10px] font-black text-red-600">CONFIRM?</button>
+                          <button onClick={() => setConfirmDeleteId(null)} className="text-[10px] font-black text-gray-300">CANCEL</button>
+                        </div>
+                      ) : (
+                        <button onClick={() => setConfirmDeleteId(l.id!)} className="text-[10px] font-black text-gray-400 hover:text-red-500">DELETE</button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -227,11 +269,19 @@ const CalorieTracker: React.FC = () => {
             </div>
           </div>
 
-          {/* RIGHT SIDE: CHARTS */}
+          {/* RIGHT SIDE: CHARTS & WEIGHT */}
           <div className="lg:col-span-4 space-y-8">
             <section className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-gray-100">
               <div className="flex justify-between items-start mb-6">
-                <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Weekly Performance</span>
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Weekly Performance</span>
+                  <div className="mt-2">
+                    <p className="text-[9px] font-black text-gray-400 uppercase">Avg Daily Intake</p>
+                    <span className={`text-xl font-black ${weeklyAverage > 2000 ? 'text-red-500' : 'text-green-500'}`}>
+                      {weeklyAverage} <span className="text-[10px] uppercase">Kcal</span>
+                    </span>
+                  </div>
+                </div>
                 <div className="text-right">
                   <div className="text-[9px] font-black text-blue-600 uppercase">Record Low: {records.lowest}</div>
                   <div className="text-[9px] font-black text-red-400 uppercase">Record High: {records.highest}</div>
@@ -248,7 +298,14 @@ const CalorieTracker: React.FC = () => {
             </section>
 
             <section className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-gray-100">
-              <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-6 block">Weight Dynamics</span>
+              <div className="flex justify-between items-start mb-6">
+                <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Weight Dynamics</span>
+                <div className="text-right">
+                  <div className="text-[9px] font-black text-blue-600 uppercase">Ever Low: {lifetimeWeightRecords.min}</div>
+                  <div className="text-[9px] font-black text-red-400 uppercase">Ever High: {lifetimeWeightRecords.max}</div>
+                </div>
+              </div>
+              
               <div className="h-40 mb-6"><Line data={weightTrendData} options={{ maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { display: false }, x: { grid: { display: false } } } }} /></div>
               <div className="flex gap-2 mb-8">
                 <input type="number" step="0.1" value={weight} onChange={e => setWeight(e.target.value)} placeholder="Lbs" className="flex-1 bg-gray-50 border-none rounded-2xl p-4 text-sm" />
@@ -256,7 +313,7 @@ const CalorieTracker: React.FC = () => {
                   onClick={async () => { 
                     if(!weight) return; 
                     await addDoc(collection(db, "health_logs"), { 
-                      date: selectedDate, // Changed this from getLocalDate()
+                      date: selectedDate,
                       food: 'Weight', 
                       calories: 0, 
                       weight: Number(weight), 
@@ -270,17 +327,37 @@ const CalorieTracker: React.FC = () => {
                   LOG
                 </button>
               </div>
-              <div className="space-y-1">
-                {logs.filter(l => l.type === 'weight').sort((a,b) => b.date.localeCompare(a.date)).slice(0, 7).map((w, i) => (
-                  <div key={w.id || i} className="flex justify-between items-center py-3 px-2 group">
-                    <div className="flex flex-col">
-                      <span className="text-[10px] font-black text-gray-300 uppercase">{new Date(w.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' })}</span>
-                      <span className="text-xs font-bold text-gray-500">{new Date(w.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+
+              {/* GROUPED WEIGHT LOG */}
+              <div className="space-y-4">
+                <button 
+                  onClick={() => setShowWeightLog(!showWeightLog)}
+                  className="w-full py-3 bg-gray-50 text-[10px] font-black uppercase tracking-widest text-gray-400 rounded-2xl hover:bg-gray-100 transition-all"
+                >
+                  {showWeightLog ? 'Hide Detailed Log' : 'See Detailed Log'}
+                </button>
+
+                {showWeightLog && groupedWeights.map((group) => (
+                  <div key={group.weekNum} className="bg-gray-50 rounded-[2rem] p-5 space-y-3">
+                    <div className="flex justify-between items-center border-b border-gray-200 pb-2 mb-2">
+                      <span className="text-[11px] font-black text-blue-600 uppercase">Week {group.weekNum}</span>
+                      <div className="flex gap-3 text-[9px] font-bold">
+                        <span className="text-gray-400 uppercase">Min: <span className="text-[#1d1d1f]">{group.min}</span></span>
+                        <span className="text-gray-400 uppercase">Max: <span className="text-[#1d1d1f]">{group.max}</span></span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-4">
-                      <span className="font-black text-sm">{w.weight} <span className="text-[10px] text-gray-300">LB</span></span>
-                      <button onClick={() => deleteDoc(doc(db, "health_logs", w.id!))} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-[10px] font-bold text-red-300 transition-all">✕</button>
-                    </div>
+                    {group.logs.map((w) => (
+                      <div key={w.id} className="flex justify-between items-center py-1 group">
+                        <div className="flex flex-col">
+                          <span className="text-[9px] font-black text-gray-300 uppercase">{new Date(w.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' })}</span>
+                          <span className="text-[10px] font-bold text-gray-500">{new Date(w.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <span className="font-black text-xs">{w.weight} <span className="text-[9px] text-gray-300">LB</span></span>
+                          <button onClick={() => deleteDoc(doc(db, "health_logs", w.id!))} className="opacity-0 group-hover:opacity-100 text-[10px] font-bold text-red-300 transition-all">✕</button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 ))}
               </div>
