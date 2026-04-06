@@ -62,7 +62,6 @@ const CalorieTracker: React.FC = () => {
       const dayGoal = getGoalForDate(dStr);
       const dayConsumed = logs.filter(l => l.date === dStr && l.type === 'food').reduce((s, l) => s + l.calories, 0);
       
-      // If we have entries for that day, or it's in the past, calculate diff
       net += (dayGoal - dayConsumed);
       currentIter.setDate(currentIter.getDate() + 1);
     }
@@ -87,7 +86,6 @@ const CalorieTracker: React.FC = () => {
     };
   }, [logs]);
 
-  // Standard functions (handleSaveFood, moveItem, etc) remain identical to previous version...
   const handleSaveFood = async (f: string, c: string | number) => {
     if (!f || !c) return;
     const existingEntry = logs.find(l => l.date === selectedDate && l.type === 'food' && l.food.toLowerCase() === f.toLowerCase() && !editingId);
@@ -254,7 +252,23 @@ const CalorieTracker: React.FC = () => {
               <div className="h-40 mb-6"><Line data={weightTrendData} options={{ maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { display: false }, x: { grid: { display: false } } } }} /></div>
               <div className="flex gap-2 mb-8">
                 <input type="number" step="0.1" value={weight} onChange={e => setWeight(e.target.value)} placeholder="Lbs" className="flex-1 bg-gray-50 border-none rounded-2xl p-4 text-sm" />
-                <button onClick={async () => { if(!weight) return; await addDoc(collection(db, "health_logs"), { date: getLocalDate(), food: 'Weight', calories: 0, weight: Number(weight), type: 'weight', sortOrder: Date.now() }); setWeight(''); }} className="bg-blue-600 text-white px-6 rounded-2xl font-bold text-xs">LOG</button>
+                <button 
+                  onClick={async () => { 
+                    if(!weight) return; 
+                    await addDoc(collection(db, "health_logs"), { 
+                      date: selectedDate, // Changed this from getLocalDate()
+                      food: 'Weight', 
+                      calories: 0, 
+                      weight: Number(weight), 
+                      type: 'weight', 
+                      sortOrder: Date.now() 
+                    }); 
+                    setWeight(''); 
+                  }} 
+                  className="bg-blue-600 text-white px-6 rounded-2xl font-bold text-xs"
+                >
+                  LOG
+                </button>
               </div>
               <div className="space-y-1">
                 {logs.filter(l => l.type === 'weight').sort((a,b) => b.date.localeCompare(a.date)).slice(0, 7).map((w, i) => (
