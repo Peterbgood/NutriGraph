@@ -46,7 +46,6 @@ const CalorieTracker: React.FC = () => {
     return logs.filter(l => l.date === selectedDate && l.type === 'food').reduce((s, l) => s + l.calories, 0);
   }, [logs, selectedDate]);
 
-  // --- CRUD & Reordering Functions ---
   const handleSaveFood = async (f: string, c: string | number) => {
     if (!f || !c) return;
     if (editingId) {
@@ -72,7 +71,6 @@ const CalorieTracker: React.FC = () => {
     await updateDoc(doc(db, "health_logs", target.id!), { sortOrder: current.sortOrder });
   };
 
-  // --- Chart Logic ---
   const weekChartData = useMemo(() => {
     const start = new Date();
     start.setDate(start.getDate() - (start.getDay() === 0 ? 6 : start.getDay() - 1) + (viewingWeekOffset * 7));
@@ -86,6 +84,7 @@ const CalorieTracker: React.FC = () => {
   }, [logs, viewingWeekOffset]);
 
   const weightTrendData = useMemo(() => {
+    // Sort ascending for the chart line (Past -> Present)
     const sortedWeights = [...logs].filter(l => l.type === 'weight').sort((a, b) => a.date.localeCompare(b.date)).slice(-14);
     return {
       labels: sortedWeights.map(l => l.date.split('-').slice(1).join('/')),
@@ -102,6 +101,13 @@ const CalorieTracker: React.FC = () => {
     };
   }, [logs]);
 
+  // Sort descending for the list (Newest -> Oldest)
+  const weightHistory = useMemo(() => {
+    return logs.filter(l => l.type === 'weight')
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .slice(0, showFullWeightHistory ? 100 : 7);
+  }, [logs, showFullWeightHistory]);
+
   return (
     <div className="min-h-screen bg-[#f5f5f7] text-[#1d1d1f] font-sans p-4 lg:p-12">
       <div className="max-w-7xl mx-auto space-y-8">
@@ -111,7 +117,7 @@ const CalorieTracker: React.FC = () => {
           <div className="flex flex-col md:flex-row justify-between items-end mb-6 gap-4">
             <div>
               <h1 className="text-4xl font-semibold tracking-tight italic">NutriGraph<span className="text-blue-600">.</span></h1>
-              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">High Net Worth Performance</p>
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Performance Logistics Dashboard</p>
             </div>
             <div className="text-right">
               <span className="text-3xl font-black">{dailyTotal}</span>
@@ -129,23 +135,25 @@ const CalorieTracker: React.FC = () => {
           <div className="lg:col-span-8 space-y-8">
             <section className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-gray-100 min-h-[450px]">
               <div className="flex justify-between items-center mb-8">
-                <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Daily Log</span>
+                <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Daily Log Breakdown</span>
                 <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="text-xs font-bold bg-gray-50 px-4 py-2 rounded-full border-none" />
               </div>
               <div className="space-y-3">
                 {logs.filter(l => l.date === selectedDate && l.type === 'food').map((l) => (
-                  <div key={l.id} className="flex justify-between items-center p-5 bg-gray-50 rounded-3xl group border border-transparent hover:border-gray-200 transition-all">
-                    <div className="flex items-center gap-4">
-                      <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => moveItem(l.id!, 'up')} className="text-[10px] hover:text-blue-600">▲</button>
-                        <button onClick={() => moveItem(l.id!, 'down')} className="text-[10px] hover:text-blue-600">▼</button>
+                  <div key={l.id} className="flex justify-between items-center p-4 md:p-5 bg-gray-50 rounded-3xl group border border-transparent md:hover:border-gray-200 transition-all">
+                    <div className="flex items-center gap-3 md:gap-4">
+                      {/* Arrows visible on mobile, hover-only on desktop */}
+                      <div className="flex flex-col gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => moveItem(l.id!, 'up')} className="text-[12px] md:text-[10px] text-gray-400 hover:text-blue-600">▲</button>
+                        <button onClick={() => moveItem(l.id!, 'down')} className="text-[12px] md:text-[10px] text-gray-400 hover:text-blue-600">▼</button>
                       </div>
                       <div>
-                        <div className="font-bold text-sm text-gray-700">{l.food}</div>
-                        <div className="text-[10px] font-black text-blue-600">{l.calories} KCAL</div>
+                        <div className="font-bold text-sm text-gray-700 leading-tight">{l.food}</div>
+                        <div className="text-[10px] font-black text-blue-600 tracking-wider">{l.calories} KCAL</div>
                       </div>
                     </div>
-                    <div className="flex gap-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {/* Actions visible on mobile, hover-only on desktop */}
+                    <div className="flex gap-3 md:gap-4 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                       <button onClick={() => { setEditingId(l.id!); setFood(l.food); setCalories(l.calories.toString()); }} className="text-[10px] font-black text-gray-400 hover:text-blue-600">EDIT</button>
                       <button onClick={() => deleteDoc(doc(db, "health_logs", l.id!))} className="text-[10px] font-black text-gray-400 hover:text-red-500">DELETE</button>
                     </div>
@@ -174,19 +182,19 @@ const CalorieTracker: React.FC = () => {
               </section>
 
               <section className="bg-[#1d1d1f] rounded-[2.5rem] p-8 shadow-2xl text-white">
-                <span className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-8 block">Manual Entry</span>
+                <span className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-8 block">Manual Log</span>
                 <div className="space-y-4">
                   <input value={food} onChange={e => setFood(e.target.value)} placeholder="Fuel Item" className="w-full bg-[#2d2d2f] border-none rounded-2xl p-4 text-sm focus:ring-1 focus:ring-blue-600" />
                   <input type="number" value={calories} onChange={e => setCalories(e.target.value)} placeholder="Kcal" className="w-full bg-[#2d2d2f] border-none rounded-2xl p-4 text-sm focus:ring-1 focus:ring-blue-600" />
                   <button onClick={() => handleSaveFood(food, calories)} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold text-sm shadow-xl hover:bg-blue-500 transition-all">
-                    {editingId ? 'UPDATE LOG' : 'ADD TO DAY'}
+                    {editingId ? 'UPDATE ENTRY' : 'ADD TO LOG'}
                   </button>
                 </div>
               </section>
             </div>
           </div>
 
-          {/* RIGHT: CHARTS & WEIGHT */}
+          {/* RIGHT: ANALYTICS & WEIGHT */}
           <div className="lg:col-span-4 space-y-8">
             <section className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-gray-100">
               <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-6 block">In-Take Variance</span>
@@ -195,14 +203,14 @@ const CalorieTracker: React.FC = () => {
               </div>
               <div className="flex justify-between items-center bg-gray-50 p-2 rounded-full">
                 <button onClick={() => setViewingWeekOffset(v => v - 1)} className="px-4 py-1 text-[10px] font-black hover:bg-white rounded-full">PREV</button>
-                <button onClick={() => setViewingWeekOffset(0)} className="px-4 py-1 text-[10px] font-black bg-white shadow-sm rounded-full">NOW</button>
+                <button onClick={() => setViewingWeekOffset(0)} className="px-4 py-1 text-[10px] font-black bg-white shadow-sm rounded-full mx-1">NOW</button>
                 <button onClick={() => setViewingWeekOffset(v => v + 1)} className="px-4 py-1 text-[10px] font-black hover:bg-white rounded-full">NEXT</button>
               </div>
             </section>
 
             <section className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-gray-100">
               <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-6 block">Weight Dynamics</span>
-              <div className="h-48 mb-6">
+              <div className="h-40 mb-6">
                 <Line data={weightTrendData} options={{ maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { display: false }, x: { grid: { display: false } } } }} />
               </div>
               <div className="flex gap-2 mb-8">
@@ -211,25 +219,29 @@ const CalorieTracker: React.FC = () => {
                   if(!weight) return;
                   await addDoc(collection(db, "health_logs"), { date: getLocalDate(), food: 'Weight', calories: 0, weight: Number(weight), type: 'weight', sortOrder: Date.now() });
                   setWeight('');
-                }} className="bg-blue-600 text-white px-6 rounded-2xl font-bold text-xs">LOG</button>
+                }} className="bg-blue-600 text-white px-6 rounded-2xl font-bold text-xs shadow-lg shadow-blue-100 hover:bg-blue-500 transition-all">LOG</button>
               </div>
               <div className="space-y-1">
-                {logs.filter(l => l.type === 'weight').sort((a,b) => b.date.localeCompare(a.date)).slice(0, showFullWeightHistory ? 100 : 7).map((w, i) => {
+                {weightHistory.map((w, i) => {
                   const isMonday = new Date(w.date + 'T00:00:00').getDay() === 1;
                   return (
-                    <div key={i} className={`flex justify-between items-center py-3 px-2 group ${isMonday ? 'mt-6 border-t border-gray-100 pt-6' : ''}`}>
+                    <div key={w.id || i} className={`flex justify-between items-center py-3 px-2 group ${isMonday ? 'mt-6 border-t border-gray-100 pt-6' : ''}`}>
                       <div className="flex flex-col">
                         <span className="text-[10px] font-black text-gray-300 uppercase">{new Date(w.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' })}</span>
                         <span className="text-xs font-bold text-gray-500">{new Date(w.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
                       </div>
                       <div className="flex items-center gap-4">
                         <span className="font-black text-sm">{w.weight} <span className="text-[10px] text-gray-300">LB</span></span>
-                        <button onClick={() => deleteDoc(doc(db, "health_logs", w.id!))} className="opacity-0 group-hover:opacity-100 text-[10px] font-bold text-red-300 transition-all">✕</button>
+                        {/* Always visible on mobile */}
+                        <button onClick={() => deleteDoc(doc(db, "health_logs", w.id!))} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-[10px] font-bold text-red-300 hover:text-red-500 transition-all">✕</button>
                       </div>
                     </div>
                   );
                 })}
               </div>
+              <button onClick={() => setShowFullWeightHistory(!showFullWeightHistory)} className="w-full mt-6 py-2 text-[10px] font-black text-gray-300 uppercase tracking-widest hover:text-blue-600 transition-colors">
+                {showFullWeightHistory ? 'View Recent' : 'Expand History'}
+              </button>
             </section>
           </div>
 
