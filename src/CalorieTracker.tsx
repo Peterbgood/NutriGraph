@@ -26,7 +26,6 @@ const CalorieTracker: React.FC = () => {
   const [calories, setCalories] = useState('');
   const [weight, setWeight] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [showFullWeightHistory, setShowFullWeightHistory] = useState(false);
 
   useEffect(() => {
     const q = query(collection(db, "health_logs"), orderBy("sortOrder", "asc"));
@@ -37,25 +36,69 @@ const CalorieTracker: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  const dailyGoal = useMemo(() => {
-    const day = new Date(selectedDate + 'T00:00:00').getDay();
-    return (day === 0 || day === 6) ? 2400 : 1700;
-  }, [selectedDate]);
+  const getGoalForDate = (dateStr: string) => {
+    const day = new Date(dateStr + 'T00:00:00').getDay();
+    // Friday (5), Saturday (6), Sunday (0) = 2400. Else 1700.
+    return (day === 0 || day === 5 || day === 6) ? 2400 : 1700;
+  };
 
   const dailyTotal = useMemo(() => {
     return logs.filter(l => l.date === selectedDate && l.type === 'food').reduce((s, l) => s + l.calories, 0);
   }, [logs, selectedDate]);
 
+  // --- Rolling Surplus Logic ---
+  const rollingSurplus = useMemo(() => {
+    const selDateObj = new Date(selectedDate + 'T00:00:00');
+    const startOfWeek = new Date(selDateObj);
+    const dayNum = selDateObj.getDay(); 
+    const diffToMonday = dayNum === 0 ? 6 : dayNum - 1;
+    startOfWeek.setDate(selDateObj.getDate() - diffToMonday);
+
+    let net = 0;
+    const currentIter = new Date(startOfWeek);
+    
+    while (currentIter <= selDateObj) {
+      const dStr = getLocalDate(currentIter);
+      const dayGoal = getGoalForDate(dStr);
+      const dayConsumed = logs.filter(l => l.date === dStr && l.type === 'food').reduce((s, l) => s + l.calories, 0);
+      
+      // If we have entries for that day, or it's in the past, calculate diff
+      net += (dayGoal - dayConsumed);
+      currentIter.setDate(currentIter.getDate() + 1);
+    }
+    return net;
+  }, [logs, selectedDate]);
+
+  // --- Record High/Low Weeks ---
+  const records = useMemo(() => {
+    const weekMap: Record<string, number> = {};
+    logs.filter(l => l.type === 'food').forEach(l => {
+      const d = new Date(l.date + 'T00:00:00');
+      const start = new Date(d);
+      const dayNum = d.getDay();
+      start.setDate(d.getDate() - (dayNum === 0 ? 6 : dayNum - 1));
+      const weekKey = getLocalDate(start);
+      weekMap[weekKey] = (weekMap[weekKey] || 0) + l.calories;
+    });
+    const totals = Object.values(weekMap);
+    return {
+      highest: totals.length ? Math.max(...totals) : 0,
+      lowest: totals.length ? Math.min(...totals) : 0
+    };
+  }, [logs]);
+
+  // Standard functions (handleSaveFood, moveItem, etc) remain identical to previous version...
   const handleSaveFood = async (f: string, c: string | number) => {
     if (!f || !c) return;
-    if (editingId) {
+    const existingEntry = logs.find(l => l.date === selectedDate && l.type === 'food' && l.food.toLowerCase() === f.toLowerCase() && !editingId);
+    if (existingEntry && existingEntry.id) {
+      await updateDoc(doc(db, "health_logs", existingEntry.id), { count: (existingEntry.count || 1) + 1, calories: existingEntry.calories + Number(c) });
+    } else if (editingId) {
       await updateDoc(doc(db, "health_logs", editingId), { food: f, calories: Number(c) });
       setEditingId(null);
     } else {
       const isCoffee = f.toLowerCase().includes('coffee');
-      await addDoc(collection(db, "health_logs"), {
-        date: selectedDate, food: f, calories: Number(c), type: 'food', weight: 0, sortOrder: isCoffee ? -Date.now() : Date.now()
-      });
+      await addDoc(collection(db, "health_logs"), { date: selectedDate, food: f, calories: Number(c), type: 'food', weight: 0, count: 1, sortOrder: isCoffee ? -Date.now() : Date.now() });
     }
     setFood(''); setCalories('');
   };
@@ -65,8 +108,7 @@ const CalorieTracker: React.FC = () => {
     const index = dayLogs.findIndex(l => l.id === id);
     if ((direction === 'up' && index === 0) || (direction === 'down' && index === dayLogs.length - 1)) return;
     const targetIdx = direction === 'up' ? index - 1 : index + 1;
-    const current = dayLogs[index];
-    const target = dayLogs[targetIdx];
+    const current = dayLogs[index]; const target = dayLogs[targetIdx];
     await updateDoc(doc(db, "health_logs", current.id!), { sortOrder: target.sortOrder });
     await updateDoc(doc(db, "health_logs", target.id!), { sortOrder: current.sortOrder });
   };
@@ -74,86 +116,79 @@ const CalorieTracker: React.FC = () => {
   const weekChartData = useMemo(() => {
     const start = new Date();
     start.setDate(start.getDate() - (start.getDay() === 0 ? 6 : start.getDay() - 1) + (viewingWeekOffset * 7));
-    const labels = []; const values = [];
+    const labels = []; const values = []; const colors = [];
     for (let i = 0; i < 7; i++) {
       const d = new Date(start); d.setDate(d.getDate() + i);
+      const dStr = getLocalDate(d);
+      const dayTotal = logs.filter(l => l.date === dStr && l.type === 'food').reduce((s, l) => s + l.calories, 0);
       labels.push(d.toLocaleDateString('en-US', { weekday: 'short' }));
-      values.push(logs.filter(l => l.date === getLocalDate(d) && l.type === 'food').reduce((s, l) => s + l.calories, 0));
+      values.push(dayTotal);
+      colors.push(dayTotal > getGoalForDate(dStr) ? '#ef4444' : '#3b82f6');
     }
-    return { labels, datasets: [{ data: values, backgroundColor: '#3b82f6', borderRadius: 8 }] };
+    return { labels, datasets: [{ data: values, backgroundColor: colors, borderRadius: 6 }] };
   }, [logs, viewingWeekOffset]);
 
   const weightTrendData = useMemo(() => {
-    // Sort ascending for the chart line (Past -> Present)
     const sortedWeights = [...logs].filter(l => l.type === 'weight').sort((a, b) => a.date.localeCompare(b.date)).slice(-14);
     return {
       labels: sortedWeights.map(l => l.date.split('-').slice(1).join('/')),
-      datasets: [{
-        data: sortedWeights.map(l => l.weight),
-        borderColor: '#3b82f6',
-        backgroundColor: 'rgba(59, 130, 246, 0.05)',
-        fill: true,
-        tension: 0.4,
-        pointRadius: 4,
-        pointBackgroundColor: '#fff',
-        pointBorderWidth: 2
-      }]
+      datasets: [{ data: sortedWeights.map(l => l.weight), borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.05)', fill: true, tension: 0.4, pointRadius: 4, pointBackgroundColor: '#fff', pointBorderWidth: 2 }]
     };
   }, [logs]);
-
-  // Sort descending for the list (Newest -> Oldest)
-  const weightHistory = useMemo(() => {
-    return logs.filter(l => l.type === 'weight')
-      .sort((a, b) => b.date.localeCompare(a.date))
-      .slice(0, showFullWeightHistory ? 100 : 7);
-  }, [logs, showFullWeightHistory]);
 
   return (
     <div className="min-h-screen bg-[#f5f5f7] text-[#1d1d1f] font-sans p-4 lg:p-12">
       <div className="max-w-7xl mx-auto space-y-8">
         
-        {/* TOP STATUS CARD */}
+        {/* HEADER */}
         <section className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-gray-100">
           <div className="flex flex-col md:flex-row justify-between items-end mb-6 gap-4">
             <div>
               <h1 className="text-4xl font-semibold tracking-tight italic">NutriGraph<span className="text-blue-600">.</span></h1>
               <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Performance Logistics Dashboard</p>
             </div>
-            <div className="text-right">
-              <span className="text-3xl font-black">{dailyTotal}</span>
-              <span className="text-gray-400 font-bold ml-1">/ {dailyGoal} KCAL</span>
+            <div className="flex gap-10 text-right">
+              <div>
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Current In-take</p>
+                <span className="text-3xl font-black">{dailyTotal}</span>
+                <span className="text-gray-400 font-bold ml-1">/ {getGoalForDate(selectedDate)}</span>
+              </div>
+              <div>
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Rolling Surplus</p>
+                <span className={`text-3xl font-black ${rollingSurplus < 0 ? 'text-red-500' : 'text-blue-600'}`}>
+                  {rollingSurplus > 0 ? `+${rollingSurplus}` : rollingSurplus}
+                </span>
+                <span className="text-gray-400 font-bold ml-1 text-xs uppercase">Kcal</span>
+              </div>
             </div>
           </div>
           <div className="w-full bg-gray-100 h-3 rounded-full overflow-hidden">
-            <div className={`h-full transition-all duration-700 ease-out ${dailyTotal > dailyGoal ? 'bg-red-500' : 'bg-blue-600'}`} style={{ width: `${Math.min((dailyTotal/dailyGoal)*100, 100)}%` }} />
+            <div className={`h-full transition-all duration-700 ease-out ${dailyTotal > getGoalForDate(selectedDate) ? 'bg-red-500' : 'bg-blue-600'}`} style={{ width: `${Math.min((dailyTotal/getGoalForDate(selectedDate))*100, 100)}%` }} />
           </div>
         </section>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          
-          {/* LEFT: LOG & PRESETS */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           <div className="lg:col-span-8 space-y-8">
-            <section className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-gray-100 min-h-[450px]">
+            {/* DAILY LOG */}
+            <section className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-gray-100 h-auto min-h-[300px]">
               <div className="flex justify-between items-center mb-8">
-                <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Daily Log Breakdown</span>
+                <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Log Breakdown</span>
                 <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="text-xs font-bold bg-gray-50 px-4 py-2 rounded-full border-none" />
               </div>
               <div className="space-y-3">
                 {logs.filter(l => l.date === selectedDate && l.type === 'food').map((l) => (
                   <div key={l.id} className="flex justify-between items-center p-4 md:p-5 bg-gray-50 rounded-3xl group border border-transparent md:hover:border-gray-200 transition-all">
                     <div className="flex items-center gap-3 md:gap-4">
-                      {/* Arrows visible on mobile, hover-only on desktop */}
-                      <div className="flex flex-col gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                      <div className="flex flex-col gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100">
                         <button onClick={() => moveItem(l.id!, 'up')} className="text-[12px] md:text-[10px] text-gray-400 hover:text-blue-600">▲</button>
                         <button onClick={() => moveItem(l.id!, 'down')} className="text-[12px] md:text-[10px] text-gray-400 hover:text-blue-600">▼</button>
                       </div>
                       <div>
-                        <div className="font-bold text-sm text-gray-700 leading-tight">{l.food}</div>
-                        <div className="text-[10px] font-black text-blue-600 tracking-wider">{l.calories} KCAL</div>
+                        <div className="font-bold text-sm text-gray-700">{l.food} {l.count && l.count > 1 && <span className="ml-2 text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">x{l.count}</span>}</div>
+                        <div className="text-[10px] font-black text-blue-600 tracking-wider uppercase">{l.calories} KCAL</div>
                       </div>
                     </div>
-                    {/* Actions visible on mobile, hover-only on desktop */}
-                    <div className="flex gap-3 md:gap-4 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                    <div className="flex gap-3 md:gap-4 opacity-100 md:opacity-0 md:group-hover:opacity-100">
                       <button onClick={() => { setEditingId(l.id!); setFood(l.food); setCalories(l.calories.toString()); }} className="text-[10px] font-black text-gray-400 hover:text-blue-600">EDIT</button>
                       <button onClick={() => deleteDoc(doc(db, "health_logs", l.id!))} className="text-[10px] font-black text-gray-400 hover:text-red-500">DELETE</button>
                     </div>
@@ -162,6 +197,7 @@ const CalorieTracker: React.FC = () => {
               </div>
             </section>
 
+            {/* PRESETS & ENTRY */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <section className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-gray-100 h-96 overflow-hidden flex flex-col">
                 <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-6">Presets</span>
@@ -180,12 +216,11 @@ const CalorieTracker: React.FC = () => {
                   ))}
                 </div>
               </section>
-
               <section className="bg-[#1d1d1f] rounded-[2.5rem] p-8 shadow-2xl text-white">
-                <span className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-8 block">Manual Log</span>
+                <span className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-8 block">Manual Entry</span>
                 <div className="space-y-4">
-                  <input value={food} onChange={e => setFood(e.target.value)} placeholder="Fuel Item" className="w-full bg-[#2d2d2f] border-none rounded-2xl p-4 text-sm focus:ring-1 focus:ring-blue-600" />
-                  <input type="number" value={calories} onChange={e => setCalories(e.target.value)} placeholder="Kcal" className="w-full bg-[#2d2d2f] border-none rounded-2xl p-4 text-sm focus:ring-1 focus:ring-blue-600" />
+                  <input value={food} onChange={e => setFood(e.target.value)} placeholder="Fuel Item" className="w-full bg-[#2d2d2f] border-none rounded-2xl p-4 text-sm" />
+                  <input type="number" value={calories} onChange={e => setCalories(e.target.value)} placeholder="Kcal" className="w-full bg-[#2d2d2f] border-none rounded-2xl p-4 text-sm" />
                   <button onClick={() => handleSaveFood(food, calories)} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold text-sm shadow-xl hover:bg-blue-500 transition-all">
                     {editingId ? 'UPDATE ENTRY' : 'ADD TO LOG'}
                   </button>
@@ -194,57 +229,49 @@ const CalorieTracker: React.FC = () => {
             </div>
           </div>
 
-          {/* RIGHT: ANALYTICS & WEIGHT */}
+          {/* RIGHT SIDE: CHARTS */}
           <div className="lg:col-span-4 space-y-8">
             <section className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-gray-100">
-              <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-6 block">In-Take Variance</span>
+              <div className="flex justify-between items-start mb-6">
+                <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Weekly Performance</span>
+                <div className="text-right">
+                  <div className="text-[9px] font-black text-blue-600 uppercase">Record Low: {records.lowest}</div>
+                  <div className="text-[9px] font-black text-red-400 uppercase">Record High: {records.highest}</div>
+                </div>
+              </div>
               <div className="h-48 mb-4">
-                <Bar data={weekChartData} options={{ maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { display: false }, x: { grid: { display: false } } } }} />
+                <Bar data={weekChartData} options={{ maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { display: true, grid: { color: '#f9fafb' }, ticks: { font: { size: 9, weight: 'bold' }, color: '#d1d5db', stepSize: 500 } }, x: { grid: { display: false }, ticks: { font: { size: 9, weight: 'bold' } } } } }} />
               </div>
               <div className="flex justify-between items-center bg-gray-50 p-2 rounded-full">
                 <button onClick={() => setViewingWeekOffset(v => v - 1)} className="px-4 py-1 text-[10px] font-black hover:bg-white rounded-full">PREV</button>
-                <button onClick={() => setViewingWeekOffset(0)} className="px-4 py-1 text-[10px] font-black bg-white shadow-sm rounded-full mx-1">NOW</button>
+                <button onClick={() => setViewingWeekOffset(0)} className="px-4 py-1 text-[10px] font-black bg-white shadow-sm rounded-full">NOW</button>
                 <button onClick={() => setViewingWeekOffset(v => v + 1)} className="px-4 py-1 text-[10px] font-black hover:bg-white rounded-full">NEXT</button>
               </div>
             </section>
 
             <section className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-gray-100">
               <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-6 block">Weight Dynamics</span>
-              <div className="h-40 mb-6">
-                <Line data={weightTrendData} options={{ maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { display: false }, x: { grid: { display: false } } } }} />
-              </div>
+              <div className="h-40 mb-6"><Line data={weightTrendData} options={{ maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { display: false }, x: { grid: { display: false } } } }} /></div>
               <div className="flex gap-2 mb-8">
                 <input type="number" step="0.1" value={weight} onChange={e => setWeight(e.target.value)} placeholder="Lbs" className="flex-1 bg-gray-50 border-none rounded-2xl p-4 text-sm" />
-                <button onClick={async () => {
-                  if(!weight) return;
-                  await addDoc(collection(db, "health_logs"), { date: getLocalDate(), food: 'Weight', calories: 0, weight: Number(weight), type: 'weight', sortOrder: Date.now() });
-                  setWeight('');
-                }} className="bg-blue-600 text-white px-6 rounded-2xl font-bold text-xs shadow-lg shadow-blue-100 hover:bg-blue-500 transition-all">LOG</button>
+                <button onClick={async () => { if(!weight) return; await addDoc(collection(db, "health_logs"), { date: getLocalDate(), food: 'Weight', calories: 0, weight: Number(weight), type: 'weight', sortOrder: Date.now() }); setWeight(''); }} className="bg-blue-600 text-white px-6 rounded-2xl font-bold text-xs">LOG</button>
               </div>
               <div className="space-y-1">
-                {weightHistory.map((w, i) => {
-                  const isMonday = new Date(w.date + 'T00:00:00').getDay() === 1;
-                  return (
-                    <div key={w.id || i} className={`flex justify-between items-center py-3 px-2 group ${isMonday ? 'mt-6 border-t border-gray-100 pt-6' : ''}`}>
-                      <div className="flex flex-col">
-                        <span className="text-[10px] font-black text-gray-300 uppercase">{new Date(w.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' })}</span>
-                        <span className="text-xs font-bold text-gray-500">{new Date(w.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <span className="font-black text-sm">{w.weight} <span className="text-[10px] text-gray-300">LB</span></span>
-                        {/* Always visible on mobile */}
-                        <button onClick={() => deleteDoc(doc(db, "health_logs", w.id!))} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-[10px] font-bold text-red-300 hover:text-red-500 transition-all">✕</button>
-                      </div>
+                {logs.filter(l => l.type === 'weight').sort((a,b) => b.date.localeCompare(a.date)).slice(0, 7).map((w, i) => (
+                  <div key={w.id || i} className="flex justify-between items-center py-3 px-2 group">
+                    <div className="flex flex-col">
+                      <span className="text-[10px] font-black text-gray-300 uppercase">{new Date(w.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' })}</span>
+                      <span className="text-xs font-bold text-gray-500">{new Date(w.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
                     </div>
-                  );
-                })}
+                    <div className="flex items-center gap-4">
+                      <span className="font-black text-sm">{w.weight} <span className="text-[10px] text-gray-300">LB</span></span>
+                      <button onClick={() => deleteDoc(doc(db, "health_logs", w.id!))} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-[10px] font-bold text-red-300 transition-all">✕</button>
+                    </div>
+                  </div>
+                ))}
               </div>
-              <button onClick={() => setShowFullWeightHistory(!showFullWeightHistory)} className="w-full mt-6 py-2 text-[10px] font-black text-gray-300 uppercase tracking-widest hover:text-blue-600 transition-colors">
-                {showFullWeightHistory ? 'View Recent' : 'Expand History'}
-              </button>
             </section>
           </div>
-
         </div>
       </div>
     </div>

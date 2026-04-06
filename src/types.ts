@@ -7,6 +7,7 @@ export interface HealthLog {
   type: 'food' | 'weight';
   weight: number;
   sortOrder: number;
+  count?: number;
 }
 
 export interface PresetItem {
