@@ -1,10 +1,16 @@
 // src/types.ts
-export interface HealthLog {
+export interface HealthLog {  // <--- Ensure 'export' is here
   id?: string;
   date: string;
   food: string;
   calories: number;
-  weight: number;
   type: 'food' | 'weight';
+  weight: number;
   sortOrder: number;
+}
+
+export interface PresetCategory {
+  category: string;
+  icon: string;
+  items: any[];
 }
