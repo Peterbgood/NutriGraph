@@ -1,73 +1,24 @@
-# React + TypeScript + Vite
+NutriGraph.
+NutriGraph is a high-performance, responsive health-tracking dashboard built for rapid daily logging and long-term trend analysis. Designed with a "Professional Classic Gentleman" aesthetic, it features a clean, high-contrast interface optimized for both desktop and mobile use.
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+🚀 Key Features
+Real-time Synchronization: Leverages Firebase Firestore to ensure health logs are updated and persisted across all devices instantly.
 
-Currently, two official plugins are available:
+Intelligent Daily Goals: Features dynamic logic that automatically adjusts caloric goals based on the day of the week—1700 kcal for weekdays and 2400 kcal for weekends.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Frictionless Logging: Includes a "Quick-Add" preset system for common food items and a "Coffee-first" sorting logic that prioritizes morning essentials.
 
-## React Compiler
+Advanced Data Visualization: Integrated Chart.js components provide visual feedback on weekly caloric intake and long-term weight trends.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Responsive UI: Built with Tailwind CSS to provide a seamless experience on iPhone 15, tablets, and high-resolution monitors.
 
-## Expanding the ESLint configuration
+🛠️ Tech Stack
+Framework: React 18 with TypeScript
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+Build Tool: Vite
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+Database: Firebase Firestore
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+Styling: Tailwind CSS
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
-
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+Visualization: Chart.js & React-Chartjs-2
