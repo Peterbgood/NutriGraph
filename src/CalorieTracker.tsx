@@ -188,19 +188,22 @@ const CalorieTracker: React.FC = () => {
     formRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  if (!isUnlocked) {
+ if (!isUnlocked) {
     return (
       <div className="min-h-screen bg-[#f5f5f7] flex items-center justify-center p-4 font-sans">
         <div className="bg-white p-12 rounded-[2.5rem] shadow-xl text-center max-w-sm w-full">
           <h1 className="text-3xl font-semibold italic mb-8">NutriGraph<span className="text-blue-600">.</span></h1>
           <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-6">Enter Pin to Unlock</p>
           <input 
-            type="password" 
+            // Changed type to tel and added inputMode for the mobile number pad
+            type="tel" 
+            inputMode="numeric"
             value={pin} 
-            onChange={e => setPin(e.target.value)}
+            onChange={e => setPin(e.target.value.replace(/\D/g, ''))} // Ensure only digits
             className="w-full bg-gray-50 border-none rounded-2xl p-4 text-center text-2xl tracking-[1em] focus:ring-2 focus:ring-blue-600"
+            style={{ WebkitTextSecurity: 'disc' } as React.CSSProperties} // Keeps the "password" dots look
             maxLength={4}
-            autoFocus
+            autoFocus // Triggers focus on load
           />
         </div>
       </div>
