@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db } from './firebase';
 import { 
   collection, query, onSnapshot, addDoc, 
@@ -19,6 +19,7 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointEleme
 const CalorieTracker: React.FC = () => {
   const getLocalDate = (date = new Date()) => date.toLocaleDateString('en-CA');
 
+  // --- State Hooks ---
   const [logs, setLogs] = useState<HealthLog[]>([]);
   const [selectedDate, setSelectedDate] = useState(getLocalDate());
   const [viewingWeekOffset, setViewingWeekOffset] = useState(0);
@@ -28,6 +29,13 @@ const CalorieTracker: React.FC = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [showWeightLog, setShowWeightLog] = useState(false);
+  
+  // PIN Protection State
+  const [pin, setPin] = useState('');
+  const [isUnlocked, setIsUnlocked] = useState(false);
+  
+  // Ref for anchoring
+  const formRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const q = query(collection(db, "health_logs"), orderBy("sortOrder", "asc"));
@@ -37,6 +45,13 @@ const CalorieTracker: React.FC = () => {
     });
     return () => unsubscribe();
   }, []);
+
+  // PIN Logic
+  useEffect(() => {
+    if (pin === '3270') {
+      setIsUnlocked(true);
+    }
+  }, [pin]);
 
   const getGoalForDate = (dateStr: string) => {
     const day = new Date(dateStr + 'T00:00:00').getDay();
@@ -64,7 +79,6 @@ const CalorieTracker: React.FC = () => {
     return net;
   }, [logs, selectedDate]);
 
-  // Record High/Low Calories for the small header labels
   const records = useMemo(() => {
     const weekMap: Record<string, number> = {};
     logs.filter(l => l.type === 'food').forEach(l => {
@@ -78,7 +92,6 @@ const CalorieTracker: React.FC = () => {
     return { highest: totals.length ? Math.max(...totals) : 0, lowest: totals.length ? Math.min(...totals) : 0 };
   }, [logs]);
 
-  // --- Lifetime Weight Records ---
   const lifetimeWeightRecords = useMemo(() => {
     const weights = logs.filter(l => l.type === 'weight').map(l => l.weight);
     return {
@@ -87,7 +100,6 @@ const CalorieTracker: React.FC = () => {
     };
   }, [logs]);
 
-  // --- Weight Grouping Logic ---
   const groupedWeights = useMemo(() => {
     const weightLogs = logs.filter(l => l.type === 'weight').sort((a, b) => b.date.localeCompare(a.date));
     const groups: Record<number, { weekNum: number, logs: HealthLog[], min: number, max: number }> = {};
@@ -168,6 +180,33 @@ const CalorieTracker: React.FC = () => {
     };
   }, [logs]);
 
+  // Handle Edit Anchor
+  const initiateEdit = (log: HealthLog) => {
+    setEditingId(log.id!);
+    setFood(log.food);
+    setCalories(log.calories.toString());
+    formRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  if (!isUnlocked) {
+    return (
+      <div className="min-h-screen bg-[#f5f5f7] flex items-center justify-center p-4 font-sans">
+        <div className="bg-white p-12 rounded-[2.5rem] shadow-xl text-center max-w-sm w-full">
+          <h1 className="text-3xl font-semibold italic mb-8">NutriGraph<span className="text-blue-600">.</span></h1>
+          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-6">Enter Pin to Unlock</p>
+          <input 
+            type="password" 
+            value={pin} 
+            onChange={e => setPin(e.target.value)}
+            className="w-full bg-gray-50 border-none rounded-2xl p-4 text-center text-2xl tracking-[1em] focus:ring-2 focus:ring-blue-600"
+            maxLength={4}
+            autoFocus
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#f5f5f7] text-[#1d1d1f] font-sans p-4 lg:p-12">
       <div className="max-w-7xl mx-auto space-y-8">
@@ -221,7 +260,7 @@ const CalorieTracker: React.FC = () => {
                       </div>
                     </div>
                     <div className="flex gap-3 md:gap-4 opacity-100 md:opacity-0 md:group-hover:opacity-100 items-center">
-                      <button onClick={() => { setEditingId(l.id!); setFood(l.food); setCalories(l.calories.toString()); }} className="text-[10px] font-black text-gray-400 hover:text-blue-600">EDIT</button>
+                      <button onClick={() => initiateEdit(l)} className="text-[10px] font-black text-gray-400 hover:text-blue-600">EDIT</button>
                       
                       {confirmDeleteId === l.id ? (
                         <div className="flex gap-2">
@@ -256,7 +295,7 @@ const CalorieTracker: React.FC = () => {
                   ))}
                 </div>
               </section>
-              <section className="bg-[#1d1d1f] rounded-[2.5rem] p-8 shadow-2xl text-white">
+              <section ref={formRef} className="bg-[#1d1d1f] rounded-[2.5rem] p-8 shadow-2xl text-white scroll-mt-8">
                 <span className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-8 block">Manual Entry</span>
                 <div className="space-y-4">
                   <input value={food} onChange={e => setFood(e.target.value)} placeholder="Fuel Item" className="w-full bg-[#2d2d2f] border-none rounded-2xl p-4 text-sm" />
@@ -264,6 +303,9 @@ const CalorieTracker: React.FC = () => {
                   <button onClick={() => handleSaveFood(food, calories)} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold text-sm shadow-xl hover:bg-blue-500 transition-all">
                     {editingId ? 'UPDATE ENTRY' : 'ADD TO LOG'}
                   </button>
+                  {editingId && (
+                    <button onClick={() => { setEditingId(null); setFood(''); setCalories(''); }} className="w-full text-[10px] font-black text-gray-500 uppercase">Cancel Edit</button>
+                  )}
                 </div>
               </section>
             </div>
@@ -328,7 +370,6 @@ const CalorieTracker: React.FC = () => {
                 </button>
               </div>
 
-              {/* GROUPED WEIGHT LOG */}
               <div className="space-y-4">
                 <button 
                   onClick={() => setShowWeightLog(!showWeightLog)}
