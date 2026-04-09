@@ -188,23 +188,80 @@ const CalorieTracker: React.FC = () => {
     formRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
- if (!isUnlocked) {
+if (!isUnlocked) {
     return (
-      <div className="min-h-screen bg-[#f5f5f7] flex items-center justify-center p-4 font-sans">
-        <div className="bg-white p-12 rounded-[2.5rem] shadow-xl text-center max-w-sm w-full">
-          <h1 className="text-3xl font-semibold italic mb-8">NutriGraph<span className="text-blue-600">.</span></h1>
-          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-6">Enter Pin to Unlock</p>
-          <input 
-            // Changed type to tel and added inputMode for the mobile number pad
-            type="tel" 
-            inputMode="numeric"
-            value={pin} 
-            onChange={e => setPin(e.target.value.replace(/\D/g, ''))} // Ensure only digits
-            className="w-full bg-gray-50 border-none rounded-2xl p-4 text-center text-2xl tracking-[1em] focus:ring-2 focus:ring-blue-600"
-            style={{ WebkitTextSecurity: 'disc' } as React.CSSProperties} // Keeps the "password" dots look
-            maxLength={4}
-            autoFocus // Triggers focus on load
-          />
+      <div className="min-h-screen bg-[#f5f5f7] flex items-center justify-center p-6 font-sans">
+        <div className="max-w-sm w-full space-y-8">
+          {/* Brand Header */}
+          <div className="text-center">
+            <h1 className="text-4xl font-semibold tracking-tight italic">
+              NutriGraph<span className="text-blue-600">.</span>
+            </h1>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mt-2">
+              Secure Terminal Access
+            </p>
+          </div>
+
+          <div className="bg-white p-10 rounded-[3rem] shadow-2xl shadow-gray-200/50 border border-white">
+            {/* PIN Slots Visual */}
+            <div className="flex justify-center gap-4 mb-10">
+              {[...Array(4)].map((_, i) => (
+                <div 
+                  key={i}
+                  className={`w-4 h-4 rounded-full border-2 transition-all duration-300 ${
+                    pin.length > i 
+                      ? 'bg-blue-600 border-blue-600 scale-110' 
+                      : 'bg-transparent border-gray-200'
+                  }`}
+                />
+              ))}
+            </div>
+
+            {/* Hidden Input for Keyboard Support */}
+            <input 
+              type="tel" 
+              inputMode="numeric"
+              value={pin} 
+              onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+              className="absolute opacity-0 pointer-events-none"
+              autoFocus
+            />
+
+            {/* Visual Keypad */}
+            <div className="grid grid-cols-3 gap-4">
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
+                <button
+                  key={num}
+                  onClick={() => pin.length < 4 && setPin(prev => prev + num)}
+                  className="h-16 w-16 mx-auto flex items-center justify-center rounded-2xl bg-gray-50 text-xl font-bold text-gray-700 hover:bg-blue-600 hover:text-white active:scale-95 transition-all"
+                >
+                  {num}
+                </button>
+              ))}
+              <button 
+                onClick={() => setPin('')}
+                className="h-16 w-16 mx-auto flex items-center justify-center rounded-2xl text-[10px] font-black text-gray-400 hover:text-red-500 transition-colors"
+              >
+                CLEAR
+              </button>
+              <button
+                onClick={() => pin.length < 4 && setPin(prev => prev + '0')}
+                className="h-16 w-16 mx-auto flex items-center justify-center rounded-2xl bg-gray-50 text-xl font-bold text-gray-700 hover:bg-blue-600 hover:text-white active:scale-95 transition-all"
+              >
+                0
+              </button>
+              <button 
+                onClick={() => setPin(prev => prev.slice(0, -1))}
+                className="h-16 w-16 mx-auto flex items-center justify-center rounded-2xl text-[10px] font-black text-gray-400 hover:text-blue-600 transition-colors"
+              >
+                DELETE
+              </button>
+            </div>
+          </div>
+
+          <p className="text-center text-[9px] font-bold text-gray-400 uppercase tracking-widest">
+            Authorized Personnel Only
+          </p>
         </div>
       </div>
     );
