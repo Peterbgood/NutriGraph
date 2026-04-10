@@ -255,8 +255,8 @@
         "icon": "fas fa-candy-cane"
       },
       {
-        "name": "Beer",
-        "calories": 600,
+        "name": "Corona Light",
+        "calories": 100,
         "type": "Beer",
         "icon": "fas fa-beer-mug-empty"
       },
