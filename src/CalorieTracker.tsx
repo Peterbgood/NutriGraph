@@ -189,83 +189,90 @@ const CalorieTracker: React.FC = () => {
   };
 
 if (!isUnlocked) {
-    return (
-      <div className="min-h-screen bg-[#f5f5f7] flex items-center justify-center p-6 font-sans">
-        <div className="max-w-sm w-full space-y-8">
-          {/* Brand Header */}
-          <div className="text-center">
-            <h1 className="text-4xl font-semibold tracking-tight italic">
-              NutriGraph<span className="text-blue-600">.</span>
-            </h1>
-            <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mt-2">
-              Secure Terminal Access
-            </p>
-          </div>
-
-          <div className="bg-white p-10 rounded-[3rem] shadow-2xl shadow-gray-200/50 border border-white">
-            {/* PIN Slots Visual */}
-            <div className="flex justify-center gap-4 mb-10">
-              {[...Array(4)].map((_, i) => (
-                <div 
-                  key={i}
-                  className={`w-4 h-4 rounded-full border-2 transition-all duration-300 ${
-                    pin.length > i 
-                      ? 'bg-blue-600 border-blue-600 scale-110' 
-                      : 'bg-transparent border-gray-200'
-                  }`}
-                />
-              ))}
-            </div>
-
-            {/* Hidden Input for Keyboard Support */}
-            <input 
-              type="tel" 
-              inputMode="numeric"
-              value={pin} 
-              onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-              className="absolute opacity-0 pointer-events-none"
-              autoFocus
-            />
-
-            {/* Visual Keypad */}
-            <div className="grid grid-cols-3 gap-4">
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
-                <button
-                  key={num}
-                  onClick={() => pin.length < 4 && setPin(prev => prev + num)}
-                  className="h-16 w-16 mx-auto flex items-center justify-center rounded-2xl bg-gray-50 text-xl font-bold text-gray-700 hover:bg-blue-600 hover:text-white active:scale-95 transition-all"
-                >
-                  {num}
-                </button>
-              ))}
-              <button 
-                onClick={() => setPin('')}
-                className="h-16 w-16 mx-auto flex items-center justify-center rounded-2xl text-[10px] font-black text-gray-400 hover:text-red-500 transition-colors"
-              >
-                CLEAR
-              </button>
-              <button
-                onClick={() => pin.length < 4 && setPin(prev => prev + '0')}
-                className="h-16 w-16 mx-auto flex items-center justify-center rounded-2xl bg-gray-50 text-xl font-bold text-gray-700 hover:bg-blue-600 hover:text-white active:scale-95 transition-all"
-              >
-                0
-              </button>
-              <button 
-                onClick={() => setPin(prev => prev.slice(0, -1))}
-                className="h-16 w-16 mx-auto flex items-center justify-center rounded-2xl text-[10px] font-black text-gray-400 hover:text-blue-600 transition-colors"
-              >
-                DELETE
-              </button>
-            </div>
-          </div>
-
-          <p className="text-center text-[9px] font-bold text-gray-400 uppercase tracking-widest">
-            Authorized Personnel Only
+  return (
+    <div 
+      className="min-h-screen bg-[#f5f5f7] flex items-center justify-center p-6 font-sans"
+      onClick={() => document.getElementById('pin-input')?.focus()} // Ensure clicking anywhere re-focuses
+    >
+      <div className="max-w-sm w-full space-y-8">
+        <div className="text-center">
+          <h1 className="text-4xl font-semibold tracking-tight italic">
+            NutriGraph<span className="text-blue-600">.</span>
+          </h1>
+          <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mt-2">
+            Secure Terminal Access
           </p>
         </div>
+
+        <div className="bg-white p-10 rounded-[3rem] shadow-2xl shadow-gray-200/50 border border-white relative overflow-hidden">
+          {/* PIN Slots Visual */}
+          <div className="flex justify-center gap-4 mb-10">
+            {[...Array(4)].map((_, i) => (
+              <div 
+                key={i}
+                className={`w-4 h-4 rounded-full border-2 transition-all duration-300 ${
+                  pin.length > i 
+                    ? 'bg-blue-600 border-blue-600 scale-110' 
+                    : 'bg-transparent border-gray-200'
+                }`}
+              />
+            ))}
+          </div>
+
+          {/* HIDDEN INPUT 
+              We use opacity-0 but keep it in the DOM flow so it can be focused.
+              'top-0 left-0 right-0 bottom-0' makes the whole card a hit-area for focus.
+          */}
+          <input 
+            id="pin-input"
+            type="text" 
+            pattern="\d*"
+            inputMode="numeric"
+            value={pin} 
+            onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+            className="absolute inset-0 opacity-0 cursor-default"
+            autoFocus
+          />
+
+          {/* Visual Keypad - Pointer events none so they don't block the input focus */}
+          <div className="grid grid-cols-3 gap-4 relative pointer-events-none">
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
+              <div
+                key={num}
+                className="h-16 w-16 mx-auto flex items-center justify-center rounded-2xl bg-gray-50 text-xl font-bold text-gray-700 pointer-events-auto cursor-pointer hover:bg-blue-600 hover:text-white active:scale-95 transition-all"
+                onClick={() => pin.length < 4 && setPin(prev => prev + num)}
+              >
+                {num}
+              </div>
+            ))}
+            <div 
+              className="h-16 w-16 mx-auto flex items-center justify-center rounded-2xl text-[10px] font-black text-gray-400 pointer-events-auto cursor-pointer hover:text-red-500 transition-colors"
+              onClick={() => setPin('')}
+            >
+              CLEAR
+            </div>
+            <div
+              className="h-16 w-16 mx-auto flex items-center justify-center rounded-2xl bg-gray-50 text-xl font-bold text-gray-700 pointer-events-auto cursor-pointer hover:bg-blue-600 hover:text-white active:scale-95 transition-all"
+              onClick={() => pin.length < 4 && setPin(prev => prev + '0')}
+            >
+              0
+            </div>
+            <div 
+              className="h-16 w-16 mx-auto flex items-center justify-center rounded-2xl text-[10px] font-black text-gray-400 pointer-events-auto cursor-pointer hover:text-blue-600 transition-colors"
+              onClick={() => setPin(prev => prev.slice(0, -1))}
+            >
+              DELETE
+            </div>
+          </div>
+        </div>
+
+        <p className="text-center text-[9px] font-bold text-gray-400 uppercase tracking-widest">
+          Authorized Personnel Only
+        </p>
       </div>
-    );
-  }
+    </div>
+  );
+}
 
   return (
     <div className="min-h-screen bg-[#f5f5f7] text-[#1d1d1f] font-sans p-4 lg:p-12">
