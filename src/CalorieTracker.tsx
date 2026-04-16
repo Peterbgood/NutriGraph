@@ -188,12 +188,35 @@ const CalorieTracker: React.FC = () => {
     formRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+// 1. PIN Logic & Keyboard Listener
+useEffect(() => {
+  // Success check
+  if (pin === '3270') {
+    setIsUnlocked(true);
+    return;
+  }
+
+  // Keyboard handler for desktop
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (isUnlocked) return;
+
+    if (e.key >= '0' && e.key <= '9') {
+      if (pin.length < 4) setPin(prev => prev + e.key);
+    } else if (e.key === 'Backspace') {
+      setPin(prev => prev.slice(0, -1));
+    } else if (e.key === 'Escape') {
+      setPin('');
+    }
+  };
+
+  window.addEventListener('keydown', handleKeyDown);
+  return () => window.removeEventListener('keydown', handleKeyDown);
+}, [pin, isUnlocked]);
+
+// 2. The Render Block
 if (!isUnlocked) {
   return (
-    <div 
-      className="min-h-screen bg-[#f5f5f7] flex items-center justify-center p-6 font-sans"
-      onClick={() => document.getElementById('pin-input')?.focus()} // Ensure clicking anywhere re-focuses
-    >
+    <div className="min-h-screen bg-[#f5f5f7] flex items-center justify-center p-6 font-sans">
       <div className="max-w-sm w-full space-y-8">
         <div className="text-center">
           <h1 className="text-4xl font-semibold tracking-tight italic">
@@ -204,8 +227,7 @@ if (!isUnlocked) {
           </p>
         </div>
 
-        <div className="bg-white p-10 rounded-[3rem] shadow-2xl shadow-gray-200/50 border border-white relative overflow-hidden">
-          {/* PIN Slots Visual */}
+        <div className="bg-white p-10 rounded-[3rem] shadow-2xl shadow-gray-200/50 border border-white">
           <div className="flex justify-center gap-4 mb-10">
             {[...Array(4)].map((_, i) => (
               <div 
@@ -219,50 +241,36 @@ if (!isUnlocked) {
             ))}
           </div>
 
-          {/* HIDDEN INPUT 
-              We use opacity-0 but keep it in the DOM flow so it can be focused.
-              'top-0 left-0 right-0 bottom-0' makes the whole card a hit-area for focus.
-          */}
-          <input 
-            id="pin-input"
-            type="text" 
-            pattern="\d*"
-            inputMode="numeric"
-            value={pin} 
-            onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-            className="absolute inset-0 opacity-0 cursor-default"
-            autoFocus
-          />
-
-          {/* Visual Keypad - Pointer events none so they don't block the input focus */}
-          <div className="grid grid-cols-3 gap-4 relative pointer-events-none">
+          {/* Visual Keypad - This handles mobile touch events */}
+          <div className="grid grid-cols-3 gap-4">
             {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
-              <div
+              <button
                 key={num}
-                className="h-16 w-16 mx-auto flex items-center justify-center rounded-2xl bg-gray-50 text-xl font-bold text-gray-700 pointer-events-auto cursor-pointer hover:bg-blue-600 hover:text-white active:scale-95 transition-all"
-                onClick={() => pin.length < 4 && setPin(prev => prev + num)}
+                type="button"
+                onClick={() => pin.length < 4 && setPin(prev => prev + num.toString())}
+                className="h-16 w-16 mx-auto flex items-center justify-center rounded-2xl bg-gray-50 text-xl font-bold text-gray-700 hover:bg-blue-600 hover:text-white active:scale-95 transition-all"
               >
                 {num}
-              </div>
+              </button>
             ))}
-            <div 
-              className="h-16 w-16 mx-auto flex items-center justify-center rounded-2xl text-[10px] font-black text-gray-400 pointer-events-auto cursor-pointer hover:text-red-500 transition-colors"
+            <button 
               onClick={() => setPin('')}
+              className="h-16 w-16 mx-auto flex items-center justify-center rounded-2xl text-[10px] font-black text-gray-400 hover:text-red-500 transition-colors"
             >
               CLEAR
-            </div>
-            <div
-              className="h-16 w-16 mx-auto flex items-center justify-center rounded-2xl bg-gray-50 text-xl font-bold text-gray-700 pointer-events-auto cursor-pointer hover:bg-blue-600 hover:text-white active:scale-95 transition-all"
+            </button>
+            <button
               onClick={() => pin.length < 4 && setPin(prev => prev + '0')}
+              className="h-16 w-16 mx-auto flex items-center justify-center rounded-2xl bg-gray-50 text-xl font-bold text-gray-700 hover:bg-blue-600 hover:text-white active:scale-95 transition-all"
             >
               0
-            </div>
-            <div 
-              className="h-16 w-16 mx-auto flex items-center justify-center rounded-2xl text-[10px] font-black text-gray-400 pointer-events-auto cursor-pointer hover:text-blue-600 transition-colors"
+            </button>
+            <button 
               onClick={() => setPin(prev => prev.slice(0, -1))}
+              className="h-16 w-16 mx-auto flex items-center justify-center rounded-2xl text-[10px] font-black text-gray-400 hover:text-blue-600 transition-colors"
             >
               DELETE
-            </div>
+            </button>
           </div>
         </div>
 
