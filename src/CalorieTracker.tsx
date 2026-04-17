@@ -30,6 +30,9 @@ const CalorieTracker: React.FC = () => {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [showWeightLog, setShowWeightLog] = useState(false);
   
+  // NEW: Weight Range Toggle
+  const [weightRange, setWeightRange] = useState<'1m' | '3m' | '1y'>('3m');
+  
   // PIN Protection State
   const [pin, setPin] = useState('');
   const [isUnlocked, setIsUnlocked] = useState(false);
@@ -119,17 +122,44 @@ const CalorieTracker: React.FC = () => {
     return Object.values(groups).sort((a, b) => b.weekNum - a.weekNum);
   }, [logs]);
 
-  const handleSaveFood = async (f: string, c: string | number) => {
+  // Modified Save Function with Counter Logic
+  const handleSaveFood = async (f: string, c: string | number, decrement: boolean = false) => {
     if (!f || !c) return;
     const existingEntry = logs.find(l => l.date === selectedDate && l.type === 'food' && l.food.toLowerCase() === f.toLowerCase() && !editingId);
+    
     if (existingEntry && existingEntry.id) {
-      await updateDoc(doc(db, "health_logs", existingEntry.id), { count: (existingEntry.count || 1) + 1, calories: existingEntry.calories + Number(c) });
+      // Counter Logic: Normal adds, or handling updates
+      const unitCalories = Number(c) / (existingEntry.count || 1);
+      await updateDoc(doc(db, "health_logs", existingEntry.id), { 
+        count: (existingEntry.count || 1) + 1, 
+        calories: existingEntry.calories + Number(c) 
+      });
     } else if (editingId) {
-      await updateDoc(doc(db, "health_logs", editingId), { food: f, calories: Number(c) });
+      const currentEntry = logs.find(l => l.id === editingId);
+      if (currentEntry && decrement && (currentEntry.count || 1) > 1) {
+        // COUNT DOWN LOGIC
+        const unitCals = currentEntry.calories / (currentEntry.count || 1);
+        await updateDoc(doc(db, "health_logs", editingId), { 
+          count: currentEntry.count! - 1, 
+          calories: currentEntry.calories - unitCals 
+        });
+      } else {
+        // Standard Update
+        await updateDoc(doc(db, "health_logs", editingId), { food: f, calories: Number(c) });
+      }
       setEditingId(null);
+      setFood(''); setCalories('');
     } else {
       const isCoffee = f.toLowerCase().includes('coffee');
-      await addDoc(collection(db, "health_logs"), { date: selectedDate, food: f, calories: Number(c), type: 'food', weight: 0, count: 1, sortOrder: isCoffee ? -Date.now() : Date.now() });
+      await addDoc(collection(db, "health_logs"), { 
+        date: selectedDate, 
+        food: f, 
+        calories: Number(c), 
+        type: 'food', 
+        weight: 0, 
+        count: 1, 
+        sortOrder: isCoffee ? -Date.now() : Date.now() 
+      });
     }
     setFood(''); setCalories('');
   };
@@ -172,15 +202,31 @@ const CalorieTracker: React.FC = () => {
     };
   }, [logs, viewingWeekOffset]);
 
+  // Modified Weight Trend with Toggles
   const weightTrendData = useMemo(() => {
-    const sortedWeights = [...logs].filter(l => l.type === 'weight').sort((a, b) => a.date.localeCompare(b.date)).slice(-14);
+    const rangeDays = weightRange === '1m' ? 30 : weightRange === '1y' ? 365 : 90;
+    const cutOffDate = new Date();
+    cutOffDate.setDate(cutOffDate.getDate() - rangeDays);
+    
+    const sortedWeights = [...logs]
+      .filter(l => l.type === 'weight' && new Date(l.date + 'T00:00:00') >= cutOffDate)
+      .sort((a, b) => a.date.localeCompare(b.date));
+
     return {
       labels: sortedWeights.map(l => l.date.split('-').slice(1).join('/')),
-      datasets: [{ data: sortedWeights.map(l => l.weight), borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.05)', fill: true, tension: 0.4, pointRadius: 4, pointBackgroundColor: '#fff', pointBorderWidth: 2 }]
+      datasets: [{ 
+        data: sortedWeights.map(l => l.weight), 
+        borderColor: '#3b82f6', 
+        backgroundColor: 'rgba(59, 130, 246, 0.05)', 
+        fill: true, 
+        tension: 0.4, 
+        pointRadius: weightRange === '1y' ? 1 : 4, 
+        pointBackgroundColor: '#fff', 
+        pointBorderWidth: 2 
+      }]
     };
-  }, [logs]);
+  }, [logs, weightRange]);
 
-  // Handle Edit Anchor
   const initiateEdit = (log: HealthLog) => {
     setEditingId(log.id!);
     setFood(log.food);
@@ -188,18 +234,13 @@ const CalorieTracker: React.FC = () => {
     formRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-// 1. PIN Logic & Keyboard Listener
 useEffect(() => {
-  // Success check
   if (pin === '3270') {
     setIsUnlocked(true);
     return;
   }
-
-  // Keyboard handler for desktop
   const handleKeyDown = (e: KeyboardEvent) => {
     if (isUnlocked) return;
-
     if (e.key >= '0' && e.key <= '9') {
       if (pin.length < 4) setPin(prev => prev + e.key);
     } else if (e.key === 'Backspace') {
@@ -208,12 +249,10 @@ useEffect(() => {
       setPin('');
     }
   };
-
   window.addEventListener('keydown', handleKeyDown);
   return () => window.removeEventListener('keydown', handleKeyDown);
 }, [pin, isUnlocked]);
 
-// 2. The Render Block
 if (!isUnlocked) {
   return (
     <div className="min-h-screen bg-[#f5f5f7] flex items-center justify-center p-6 font-sans">
@@ -226,7 +265,6 @@ if (!isUnlocked) {
             Secure Terminal Access
           </p>
         </div>
-
         <div className="bg-white p-10 rounded-[3rem] shadow-2xl shadow-gray-200/50 border border-white">
           <div className="flex justify-center gap-4 mb-10">
             {[...Array(4)].map((_, i) => (
@@ -240,8 +278,6 @@ if (!isUnlocked) {
               />
             ))}
           </div>
-
-          {/* Visual Keypad - This handles mobile touch events */}
           <div className="grid grid-cols-3 gap-4">
             {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
               <button
@@ -253,30 +289,12 @@ if (!isUnlocked) {
                 {num}
               </button>
             ))}
-            <button 
-              onClick={() => setPin('')}
-              className="h-16 w-16 mx-auto flex items-center justify-center rounded-2xl text-[10px] font-black text-gray-400 hover:text-red-500 transition-colors"
-            >
-              CLEAR
-            </button>
-            <button
-              onClick={() => pin.length < 4 && setPin(prev => prev + '0')}
-              className="h-16 w-16 mx-auto flex items-center justify-center rounded-2xl bg-gray-50 text-xl font-bold text-gray-700 hover:bg-blue-600 hover:text-white active:scale-95 transition-all"
-            >
-              0
-            </button>
-            <button 
-              onClick={() => setPin(prev => prev.slice(0, -1))}
-              className="h-16 w-16 mx-auto flex items-center justify-center rounded-2xl text-[10px] font-black text-gray-400 hover:text-blue-600 transition-colors"
-            >
-              DELETE
-            </button>
+            <button onClick={() => setPin('')} className="h-16 w-16 mx-auto flex items-center justify-center rounded-2xl text-[10px] font-black text-gray-400 hover:text-red-500 transition-colors">CLEAR</button>
+            <button onClick={() => pin.length < 4 && setPin(prev => prev + '0')} className="h-16 w-16 mx-auto flex items-center justify-center rounded-2xl bg-gray-50 text-xl font-bold text-gray-700 hover:bg-blue-600 hover:text-white active:scale-95 transition-all">0</button>
+            <button onClick={() => setPin(prev => prev.slice(0, -1))} className="h-16 w-16 mx-auto flex items-center justify-center rounded-2xl text-[10px] font-black text-gray-400 hover:text-blue-600 transition-colors">DELETE</button>
           </div>
         </div>
-
-        <p className="text-center text-[9px] font-bold text-gray-400 uppercase tracking-widest">
-          Authorized Personnel Only
-        </p>
+        <p className="text-center text-[9px] font-bold text-gray-400 uppercase tracking-widest">Authorized Personnel Only</p>
       </div>
     </div>
   );
@@ -315,7 +333,6 @@ if (!isUnlocked) {
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           <div className="lg:col-span-8 space-y-8">
-            {/* DAILY LOG */}
             <section className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-gray-100 h-auto min-h-[300px]">
               <div className="flex justify-between items-center mb-8">
                 <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Log Breakdown</span>
@@ -336,7 +353,6 @@ if (!isUnlocked) {
                     </div>
                     <div className="flex gap-3 md:gap-4 opacity-100 md:opacity-0 md:group-hover:opacity-100 items-center">
                       <button onClick={() => initiateEdit(l)} className="text-[10px] font-black text-gray-400 hover:text-blue-600">EDIT</button>
-                      
                       {confirmDeleteId === l.id ? (
                         <div className="flex gap-2">
                           <button onClick={() => { deleteDoc(doc(db, "health_logs", l.id!)); setConfirmDeleteId(null); }} className="text-[10px] font-black text-red-600">CONFIRM?</button>
@@ -351,7 +367,6 @@ if (!isUnlocked) {
               </div>
             </section>
 
-            {/* PRESETS & ENTRY */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <section className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-gray-100 h-96 overflow-hidden flex flex-col">
                 <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-6">Presets</span>
@@ -379,14 +394,16 @@ if (!isUnlocked) {
                     {editingId ? 'UPDATE ENTRY' : 'ADD TO LOG'}
                   </button>
                   {editingId && (
-                    <button onClick={() => { setEditingId(null); setFood(''); setCalories(''); }} className="w-full text-[10px] font-black text-gray-500 uppercase">Cancel Edit</button>
+                    <div className="space-y-3">
+                      <button onClick={() => handleSaveFood(food, calories, true)} className="w-full bg-gray-700 text-white py-3 rounded-2xl font-bold text-[10px] uppercase">Count Down (-1)</button>
+                      <button onClick={() => { setEditingId(null); setFood(''); setCalories(''); }} className="w-full text-[10px] font-black text-gray-500 uppercase">Cancel Edit</button>
+                    </div>
                   )}
                 </div>
               </section>
             </div>
           </div>
 
-          {/* RIGHT SIDE: CHARTS & WEIGHT */}
           <div className="lg:col-span-4 space-y-8">
             <section className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-gray-100">
               <div className="flex justify-between items-start mb-6">
@@ -423,36 +440,28 @@ if (!isUnlocked) {
                 </div>
               </div>
               
-              <div className="h-40 mb-6"><Line data={weightTrendData} options={{ maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { display: false }, x: { grid: { display: false } } } }} /></div>
+              <div className="h-40 mb-4"><Line data={weightTrendData} options={{ maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { display: false }, x: { grid: { display: false } } } }} /></div>
+              
+              {/* Range Toggle Buttons */}
+              <div className="flex justify-center gap-2 mb-6 bg-gray-50 p-1 rounded-xl">
+                {(['1m', '3m', '1y'] as const).map((r) => (
+                  <button 
+                    key={r} 
+                    onClick={() => setWeightRange(r)}
+                    className={`flex-1 py-1.5 text-[9px] font-black rounded-lg transition-all ${weightRange === r ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400'}`}
+                  >
+                    {r.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+
               <div className="flex gap-2 mb-8">
                 <input type="number" step="0.1" value={weight} onChange={e => setWeight(e.target.value)} placeholder="Lbs" className="flex-1 bg-gray-50 border-none rounded-2xl p-4 text-sm" />
-                <button 
-                  onClick={async () => { 
-                    if(!weight) return; 
-                    await addDoc(collection(db, "health_logs"), { 
-                      date: selectedDate,
-                      food: 'Weight', 
-                      calories: 0, 
-                      weight: Number(weight), 
-                      type: 'weight', 
-                      sortOrder: Date.now() 
-                    }); 
-                    setWeight(''); 
-                  }} 
-                  className="bg-blue-600 text-white px-6 rounded-2xl font-bold text-xs"
-                >
-                  LOG
-                </button>
+                <button onClick={async () => { if(!weight) return; await addDoc(collection(db, "health_logs"), { date: selectedDate, food: 'Weight', calories: 0, weight: Number(weight), type: 'weight', sortOrder: Date.now() }); setWeight(''); }} className="bg-blue-600 text-white px-6 rounded-2xl font-bold text-xs">LOG</button>
               </div>
 
               <div className="space-y-4">
-                <button 
-                  onClick={() => setShowWeightLog(!showWeightLog)}
-                  className="w-full py-3 bg-gray-50 text-[10px] font-black uppercase tracking-widest text-gray-400 rounded-2xl hover:bg-gray-100 transition-all"
-                >
-                  {showWeightLog ? 'Hide Detailed Log' : 'See Detailed Log'}
-                </button>
-
+                <button onClick={() => setShowWeightLog(!showWeightLog)} className="w-full py-3 bg-gray-50 text-[10px] font-black uppercase tracking-widest text-gray-400 rounded-2xl hover:bg-gray-100 transition-all">{showWeightLog ? 'Hide Detailed Log' : 'See Detailed Log'}</button>
                 {showWeightLog && groupedWeights.map((group) => (
                   <div key={group.weekNum} className="bg-gray-50 rounded-[2rem] p-5 space-y-3">
                     <div className="flex justify-between items-center border-b border-gray-200 pb-2 mb-2">
