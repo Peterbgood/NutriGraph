@@ -27,17 +27,10 @@ const CalorieTracker: React.FC = () => {
   const [calories, setCalories] = useState('');
   const [weight, setWeight] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [showWeightLog, setShowWeightLog] = useState(false);
-  
-  // NEW: Weight Range Toggle
   const [weightRange, setWeightRange] = useState<'1m' | '3m' | '1y'>('3m');
-  
-  // PIN Protection State
   const [pin, setPin] = useState('');
   const [isUnlocked, setIsUnlocked] = useState(false);
-  
-  // Ref for anchoring
   const formRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -49,11 +42,8 @@ const CalorieTracker: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // PIN Logic
   useEffect(() => {
-    if (pin === '3270') {
-      setIsUnlocked(true);
-    }
+    if (pin === '3270') setIsUnlocked(true);
   }, [pin]);
 
   const getGoalForDate = (dateStr: string) => {
@@ -97,24 +87,17 @@ const CalorieTracker: React.FC = () => {
 
   const lifetimeWeightRecords = useMemo(() => {
     const weights = logs.filter(l => l.type === 'weight').map(l => l.weight);
-    return {
-      min: weights.length ? Math.min(...weights) : 0,
-      max: weights.length ? Math.max(...weights) : 0
-    };
+    return { min: weights.length ? Math.min(...weights) : 0, max: weights.length ? Math.max(...weights) : 0 };
   }, [logs]);
 
   const groupedWeights = useMemo(() => {
     const weightLogs = logs.filter(l => l.type === 'weight').sort((a, b) => b.date.localeCompare(a.date));
     const groups: Record<number, { weekNum: number, logs: HealthLog[], min: number, max: number }> = {};
-
     weightLogs.forEach(l => {
       const date = new Date(l.date + 'T00:00:00');
       const startOfYear = new Date(date.getFullYear(), 0, 1);
       const weekNum = Math.ceil((((date.getTime() - startOfYear.getTime()) / 86400000) + startOfYear.getDay() + 1) / 7);
-      
-      if (!groups[weekNum]) {
-        groups[weekNum] = { weekNum, logs: [], min: Infinity, max: -Infinity };
-      }
+      if (!groups[weekNum]) groups[weekNum] = { weekNum, logs: [], min: Infinity, max: -Infinity };
       groups[weekNum].logs.push(l);
       groups[weekNum].min = Math.min(groups[weekNum].min, l.weight);
       groups[weekNum].max = Math.max(groups[weekNum].max, l.weight);
@@ -122,46 +105,37 @@ const CalorieTracker: React.FC = () => {
     return Object.values(groups).sort((a, b) => b.weekNum - a.weekNum);
   }, [logs]);
 
-  // Modified Save Function with Counter Logic
-  const handleSaveFood = async (f: string, c: string | number, decrement: boolean = false) => {
+  // Handle + / - and manual updates
+  const handleSaveFood = async (f: string, c: string | number, delta: number = 0) => {
     if (!f || !c) return;
     const existingEntry = logs.find(l => l.date === selectedDate && l.type === 'food' && l.food.toLowerCase() === f.toLowerCase() && !editingId);
-    
+
     if (existingEntry && existingEntry.id) {
-      // Counter Logic: Normal adds, or handling updates
-      const unitCalories = Number(c) / (existingEntry.count || 1);
-      await updateDoc(doc(db, "health_logs", existingEntry.id), { 
-        count: (existingEntry.count || 1) + 1, 
-        calories: existingEntry.calories + Number(c) 
-      });
-    } else if (editingId) {
-      const currentEntry = logs.find(l => l.id === editingId);
-      if (currentEntry && decrement && (currentEntry.count || 1) > 1) {
-        // COUNT DOWN LOGIC
-        const unitCals = currentEntry.calories / (currentEntry.count || 1);
-        await updateDoc(doc(db, "health_logs", editingId), { 
-          count: currentEntry.count! - 1, 
-          calories: currentEntry.calories - unitCals 
-        });
+      const currentCount = existingEntry.count || 1;
+      const unitCalories = existingEntry.calories / currentCount;
+      const change = delta !== 0 ? delta : 1;
+      const newCount = currentCount + change;
+
+      if (newCount <= 0) {
+        await deleteDoc(doc(db, "health_logs", existingEntry.id));
       } else {
-        // Standard Update
-        await updateDoc(doc(db, "health_logs", editingId), { food: f, calories: Number(c) });
+        await updateDoc(doc(db, "health_logs", existingEntry.id), { 
+          count: newCount, 
+          calories: Math.round(unitCalories * newCount) 
+        });
       }
+    } else if (editingId) {
+      await updateDoc(doc(db, "health_logs", editingId), { food: f, calories: Number(c) });
       setEditingId(null);
       setFood(''); setCalories('');
     } else {
       const isCoffee = f.toLowerCase().includes('coffee');
       await addDoc(collection(db, "health_logs"), { 
-        date: selectedDate, 
-        food: f, 
-        calories: Number(c), 
-        type: 'food', 
-        weight: 0, 
-        count: 1, 
+        date: selectedDate, food: f, calories: Number(c), type: 'food', weight: 0, count: 1, 
         sortOrder: isCoffee ? -Date.now() : Date.now() 
       });
     }
-    setFood(''); setCalories('');
+    if (!editingId) { setFood(''); setCalories(''); }
   };
 
   const moveItem = async (id: string, direction: 'up' | 'down') => {
@@ -178,23 +152,16 @@ const CalorieTracker: React.FC = () => {
     const start = new Date();
     start.setDate(start.getDate() - (start.getDay() === 0 ? 6 : start.getDay() - 1) + (viewingWeekOffset * 7));
     const labels = []; const values = []; const colors = [];
-    let sum = 0;
-    let daysWithLogs = 0;
-
+    let sum = 0, daysWithLogs = 0;
     for (let i = 0; i < 7; i++) {
       const d = new Date(start); d.setDate(d.getDate() + i);
       const dStr = getLocalDate(d);
       const dayFoodLogs = logs.filter(l => l.date === dStr && l.type === 'food');
       const dayTotal = dayFoodLogs.reduce((s, l) => s + l.calories, 0);
-      
       labels.push(d.toLocaleDateString('en-US', { weekday: 'short' }));
       values.push(dayTotal);
       colors.push(dayTotal > getGoalForDate(dStr) ? '#ef4444' : '#3b82f6');
-      
-      if (dayFoodLogs.length > 0) {
-        sum += dayTotal;
-        daysWithLogs++;
-      }
+      if (dayFoodLogs.length > 0) { sum += dayTotal; daysWithLogs++; }
     }
     return { 
       weekChartData: { labels, datasets: [{ data: values, backgroundColor: colors, borderRadius: 6 }] },
@@ -202,27 +169,18 @@ const CalorieTracker: React.FC = () => {
     };
   }, [logs, viewingWeekOffset]);
 
-  // Modified Weight Trend with Toggles
   const weightTrendData = useMemo(() => {
     const rangeDays = weightRange === '1m' ? 30 : weightRange === '1y' ? 365 : 90;
     const cutOffDate = new Date();
     cutOffDate.setDate(cutOffDate.getDate() - rangeDays);
-    
     const sortedWeights = [...logs]
       .filter(l => l.type === 'weight' && new Date(l.date + 'T00:00:00') >= cutOffDate)
       .sort((a, b) => a.date.localeCompare(b.date));
-
     return {
       labels: sortedWeights.map(l => l.date.split('-').slice(1).join('/')),
       datasets: [{ 
-        data: sortedWeights.map(l => l.weight), 
-        borderColor: '#3b82f6', 
-        backgroundColor: 'rgba(59, 130, 246, 0.05)', 
-        fill: true, 
-        tension: 0.4, 
-        pointRadius: weightRange === '1y' ? 1 : 4, 
-        pointBackgroundColor: '#fff', 
-        pointBorderWidth: 2 
+        data: sortedWeights.map(l => l.weight), borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.05)', 
+        fill: true, tension: 0.4, pointRadius: weightRange === '1y' ? 1 : 4, pointBackgroundColor: '#fff', pointBorderWidth: 2 
       }]
     };
   }, [logs, weightRange]);
@@ -234,77 +192,51 @@ const CalorieTracker: React.FC = () => {
     formRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-useEffect(() => {
-  if (pin === '3270') {
-    setIsUnlocked(true);
-    return;
-  }
-  const handleKeyDown = (e: KeyboardEvent) => {
-    if (isUnlocked) return;
-    if (e.key >= '0' && e.key <= '9') {
-      if (pin.length < 4) setPin(prev => prev + e.key);
-    } else if (e.key === 'Backspace') {
-      setPin(prev => prev.slice(0, -1));
-    } else if (e.key === 'Escape') {
-      setPin('');
-    }
-  };
-  window.addEventListener('keydown', handleKeyDown);
-  return () => window.removeEventListener('keydown', handleKeyDown);
-}, [pin, isUnlocked]);
+  useEffect(() => {
+    if (pin === '3270') { setIsUnlocked(true); return; }
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (isUnlocked) return;
+      if (e.key >= '0' && e.key <= '9') { if (pin.length < 4) setPin(prev => prev + e.key); }
+      else if (e.key === 'Backspace') setPin(prev => prev.slice(0, -1));
+      else if (e.key === 'Escape') setPin('');
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [pin, isUnlocked]);
 
-if (!isUnlocked) {
-  return (
-    <div className="min-h-screen bg-[#f5f5f7] flex items-center justify-center p-6 font-sans">
-      <div className="max-w-sm w-full space-y-8">
-        <div className="text-center">
-          <h1 className="text-4xl font-semibold tracking-tight italic">
-            NutriGraph<span className="text-blue-600">.</span>
-          </h1>
-          <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mt-2">
-            Secure Terminal Access
-          </p>
-        </div>
-        <div className="bg-white p-10 rounded-[3rem] shadow-2xl shadow-gray-200/50 border border-white">
-          <div className="flex justify-center gap-4 mb-10">
-            {[...Array(4)].map((_, i) => (
-              <div 
-                key={i}
-                className={`w-4 h-4 rounded-full border-2 transition-all duration-300 ${
-                  pin.length > i 
-                    ? 'bg-blue-600 border-blue-600 scale-110' 
-                    : 'bg-transparent border-gray-200'
-                }`}
-              />
-            ))}
+  if (!isUnlocked) {
+    return (
+      <div className="min-h-screen bg-[#f5f5f7] flex items-center justify-center p-6 font-sans">
+        <div className="max-w-sm w-full space-y-8">
+          <div className="text-center">
+            <h1 className="text-4xl font-semibold tracking-tight italic">NutriGraph<span className="text-blue-600">.</span></h1>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mt-2">Secure Terminal Access</p>
           </div>
-          <div className="grid grid-cols-3 gap-4">
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
-              <button
-                key={num}
-                type="button"
-                onClick={() => pin.length < 4 && setPin(prev => prev + num.toString())}
-                className="h-16 w-16 mx-auto flex items-center justify-center rounded-2xl bg-gray-50 text-xl font-bold text-gray-700 hover:bg-blue-600 hover:text-white active:scale-95 transition-all"
-              >
-                {num}
-              </button>
-            ))}
-            <button onClick={() => setPin('')} className="h-16 w-16 mx-auto flex items-center justify-center rounded-2xl text-[10px] font-black text-gray-400 hover:text-red-500 transition-colors">CLEAR</button>
-            <button onClick={() => pin.length < 4 && setPin(prev => prev + '0')} className="h-16 w-16 mx-auto flex items-center justify-center rounded-2xl bg-gray-50 text-xl font-bold text-gray-700 hover:bg-blue-600 hover:text-white active:scale-95 transition-all">0</button>
-            <button onClick={() => setPin(prev => prev.slice(0, -1))} className="h-16 w-16 mx-auto flex items-center justify-center rounded-2xl text-[10px] font-black text-gray-400 hover:text-blue-600 transition-colors">DELETE</button>
+          <div className="bg-white p-10 rounded-[3rem] shadow-2xl shadow-gray-200/50 border border-white">
+            <div className="flex justify-center gap-4 mb-10">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all duration-300 ${pin.length > i ? 'bg-blue-600 border-blue-600 scale-110' : 'bg-transparent border-gray-200'}`} />
+              ))}
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
+                <button key={num} onClick={() => pin.length < 4 && setPin(prev => prev + num.toString())} className="h-16 w-16 mx-auto flex items-center justify-center rounded-2xl bg-gray-50 text-xl font-bold text-gray-700 hover:bg-blue-600 hover:text-white active:scale-95 transition-all">{num}</button>
+              ))}
+              <button onClick={() => setPin('')} className="h-16 w-16 mx-auto flex items-center justify-center rounded-2xl text-[10px] font-black text-gray-400 hover:text-red-500 transition-colors">CLEAR</button>
+              <button onClick={() => pin.length < 4 && setPin(prev => prev + '0')} className="h-16 w-16 mx-auto flex items-center justify-center rounded-2xl bg-gray-50 text-xl font-bold text-gray-700 hover:bg-blue-600 hover:text-white active:scale-95 transition-all">0</button>
+              <button onClick={() => setPin(prev => prev.slice(0, -1))} className="h-16 w-16 mx-auto flex items-center justify-center rounded-2xl text-[10px] font-black text-gray-400 hover:text-blue-600 transition-colors">DELETE</button>
+            </div>
           </div>
         </div>
-        <p className="text-center text-[9px] font-bold text-gray-400 uppercase tracking-widest">Authorized Personnel Only</p>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#f5f5f7] text-[#1d1d1f] font-sans p-4 lg:p-12">
       <div className="max-w-7xl mx-auto space-y-8">
         
-        {/* HEADER */}
+        {/* HEADER SECTION */}
         <section className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-gray-100">
           <div className="flex flex-col md:flex-row justify-between items-end mb-6 gap-4">
             <div>
@@ -341,26 +273,37 @@ if (!isUnlocked) {
               <div className="space-y-3">
                 {logs.filter(l => l.date === selectedDate && l.type === 'food').map((l) => (
                   <div key={l.id} className="flex justify-between items-center p-4 md:p-5 bg-gray-50 rounded-3xl group border border-transparent md:hover:border-gray-200 transition-all">
-                    <div className="flex items-center gap-3 md:gap-4">
-                      <div className="flex flex-col gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100">
-                        <button onClick={() => moveItem(l.id!, 'up')} className="text-[12px] md:text-[10px] text-gray-400 hover:text-blue-600">▲</button>
-                        <button onClick={() => moveItem(l.id!, 'down')} className="text-[12px] md:text-[10px] text-gray-400 hover:text-blue-600">▼</button>
+                    <div className="flex items-center gap-4">
+                      {/* 1. REORDER BUTTONS FIRST */}
+                      <div className="flex flex-col gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => moveItem(l.id!, 'up')} className="text-[10px] text-gray-400 hover:text-blue-600 leading-none">▲</button>
+                        <button onClick={() => moveItem(l.id!, 'down')} className="text-[10px] text-gray-400 hover:text-blue-600 leading-none">▼</button>
                       </div>
+
+                      {/* 2. FOOD INFO SECOND */}
                       <div>
-                        <div className="font-bold text-sm text-gray-700">{l.food} {l.count && l.count > 1 && <span className="ml-2 text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">x{l.count}</span>}</div>
+                        <div className="font-bold text-sm text-gray-700">
+                          {l.food} {l.count && l.count > 1 && <span className="ml-2 text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">x{l.count}</span>}
+                        </div>
                         <div className="text-[10px] font-black text-blue-600 tracking-wider uppercase">{l.calories} KCAL</div>
                       </div>
                     </div>
-                    <div className="flex gap-3 md:gap-4 opacity-100 md:opacity-0 md:group-hover:opacity-100 items-center">
-                      <button onClick={() => initiateEdit(l)} className="text-[10px] font-black text-gray-400 hover:text-blue-600">EDIT</button>
-                      {confirmDeleteId === l.id ? (
-                        <div className="flex gap-2">
-                          <button onClick={() => { deleteDoc(doc(db, "health_logs", l.id!)); setConfirmDeleteId(null); }} className="text-[10px] font-black text-red-600">CONFIRM?</button>
-                          <button onClick={() => setConfirmDeleteId(null)} className="text-[10px] font-black text-gray-300">CANCEL</button>
-                        </div>
-                      ) : (
-                        <button onClick={() => setConfirmDeleteId(l.id!)} className="text-[10px] font-black text-gray-400 hover:text-red-500">DELETE</button>
-                      )}
+
+                    <div className="flex gap-4 items-center">
+                      {/* 3. EDIT BUTTON THIRD */}
+                      <button 
+                        onClick={() => initiateEdit(l)} 
+                        className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-[10px] font-black text-gray-400 hover:text-blue-600 transition-opacity"
+                      >
+                        EDIT
+                      </button>
+
+                      {/* 4. QUANTITY PILL LAST */}
+                      <div className="flex items-center bg-white rounded-xl shadow-sm border border-gray-100 p-1">
+                        <button onClick={() => handleSaveFood(l.food, l.calories, -1)} className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-red-500 font-bold">−</button>
+                        <div className="w-px h-4 bg-gray-100" />
+                        <button onClick={() => handleSaveFood(l.food, l.calories, 1)} className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-blue-600 font-bold">+</button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -385,6 +328,7 @@ if (!isUnlocked) {
                   ))}
                 </div>
               </section>
+
               <section ref={formRef} className="bg-[#1d1d1f] rounded-[2.5rem] p-8 shadow-2xl text-white scroll-mt-8">
                 <span className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-8 block">Manual Entry</span>
                 <div className="space-y-4">
@@ -394,16 +338,14 @@ if (!isUnlocked) {
                     {editingId ? 'UPDATE ENTRY' : 'ADD TO LOG'}
                   </button>
                   {editingId && (
-                    <div className="space-y-3">
-                      <button onClick={() => handleSaveFood(food, calories, true)} className="w-full bg-gray-700 text-white py-3 rounded-2xl font-bold text-[10px] uppercase">Count Down (-1)</button>
-                      <button onClick={() => { setEditingId(null); setFood(''); setCalories(''); }} className="w-full text-[10px] font-black text-gray-500 uppercase">Cancel Edit</button>
-                    </div>
+                    <button onClick={() => { setEditingId(null); setFood(''); setCalories(''); }} className="w-full text-[10px] font-black text-gray-500 uppercase">Cancel Edit</button>
                   )}
                 </div>
               </section>
             </div>
           </div>
 
+          {/* SIDEBAR SECTION */}
           <div className="lg:col-span-4 space-y-8">
             <section className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-gray-100">
               <div className="flex justify-between items-start mb-6">
@@ -439,27 +381,16 @@ if (!isUnlocked) {
                   <div className="text-[9px] font-black text-red-400 uppercase">Ever High: {lifetimeWeightRecords.max}</div>
                 </div>
               </div>
-              
               <div className="h-40 mb-4"><Line data={weightTrendData} options={{ maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { display: false }, x: { grid: { display: false } } } }} /></div>
-              
-              {/* Range Toggle Buttons */}
               <div className="flex justify-center gap-2 mb-6 bg-gray-50 p-1 rounded-xl">
                 {(['1m', '3m', '1y'] as const).map((r) => (
-                  <button 
-                    key={r} 
-                    onClick={() => setWeightRange(r)}
-                    className={`flex-1 py-1.5 text-[9px] font-black rounded-lg transition-all ${weightRange === r ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400'}`}
-                  >
-                    {r.toUpperCase()}
-                  </button>
+                  <button key={r} onClick={() => setWeightRange(r)} className={`flex-1 py-1.5 text-[9px] font-black rounded-lg transition-all ${weightRange === r ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400'}`}>{r.toUpperCase()}</button>
                 ))}
               </div>
-
               <div className="flex gap-2 mb-8">
                 <input type="number" step="0.1" value={weight} onChange={e => setWeight(e.target.value)} placeholder="Lbs" className="flex-1 bg-gray-50 border-none rounded-2xl p-4 text-sm" />
                 <button onClick={async () => { if(!weight) return; await addDoc(collection(db, "health_logs"), { date: selectedDate, food: 'Weight', calories: 0, weight: Number(weight), type: 'weight', sortOrder: Date.now() }); setWeight(''); }} className="bg-blue-600 text-white px-6 rounded-2xl font-bold text-xs">LOG</button>
               </div>
-
               <div className="space-y-4">
                 <button onClick={() => setShowWeightLog(!showWeightLog)} className="w-full py-3 bg-gray-50 text-[10px] font-black uppercase tracking-widest text-gray-400 rounded-2xl hover:bg-gray-100 transition-all">{showWeightLog ? 'Hide Detailed Log' : 'See Detailed Log'}</button>
                 {showWeightLog && groupedWeights.map((group) => (
