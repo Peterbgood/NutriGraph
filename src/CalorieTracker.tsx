@@ -320,7 +320,7 @@ const CalorieTracker: React.FC = () => {
             </section>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <section className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-gray-100 h-96 overflow-hidden flex flex-col">
+              <section className="bg-white rounded-[2.5rem] p-4 shadow-sm border border-gray-100 h-96 overflow-hidden flex flex-col">
                 <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-6">Presets</span>
                 <div className="overflow-y-auto space-y-6 custom-scrollbar pr-2">
                   {FOOD_PRESETS.map((cat, idx) => (
