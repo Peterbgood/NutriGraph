@@ -5,7 +5,7 @@
     "collapseId": "collapseBeverages",
     "items": [
       {
-        "name": "Coffee (Latte/Cream)",
+        "name": "Coffee",
         "calories": 160,
         "type": "coffee",
         "icon": "fas fa-mug-hot"
