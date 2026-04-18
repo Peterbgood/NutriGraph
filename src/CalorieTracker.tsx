@@ -271,42 +271,51 @@ const CalorieTracker: React.FC = () => {
                 <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="text-xs font-bold bg-gray-50 px-4 py-2 rounded-full border-none" />
               </div>
               <div className="space-y-3">
-                {logs.filter(l => l.date === selectedDate && l.type === 'food').map((l) => (
-                  <div key={l.id} className="flex justify-between items-center p-4 md:p-5 bg-gray-50 rounded-3xl group border border-transparent md:hover:border-gray-200 transition-all">
-                    <div className="flex items-center gap-4">
-                      {/* 1. REORDER BUTTONS FIRST */}
-                      <div className="flex flex-col gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => moveItem(l.id!, 'up')} className="text-[10px] text-gray-400 hover:text-blue-600 leading-none">▲</button>
-                        <button onClick={() => moveItem(l.id!, 'down')} className="text-[10px] text-gray-400 hover:text-blue-600 leading-none">▼</button>
-                      </div>
+               {logs.filter(l => l.date === selectedDate && l.type === 'food').map((l) => (
+  <div 
+    key={l.id} 
+    className="flex justify-between items-center p-3 md:p-5 bg-gray-50 rounded-3xl group border border-transparent md:hover:border-gray-200 transition-all"
+  >
+    <div className="flex items-center gap-2 md:gap-4 min-w-0">
+      {/* 1. REORDER BUTTONS - Narrower gap and smaller targets for mobile */}
+      <div className="flex flex-col gap-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+        <button onClick={() => moveItem(l.id!, 'up')} className="p-1 text-[10px] text-gray-400 hover:text-blue-600 leading-none">▲</button>
+        <button onClick={() => moveItem(l.id!, 'down')} className="p-1 text-[10px] text-gray-400 hover:text-blue-600 leading-none">▼</button>
+      </div>
 
-                      {/* 2. FOOD INFO SECOND */}
-                      <div>
-                        <div className="font-bold text-sm text-gray-700">
-                          {l.food} {l.count && l.count > 1 && <span className="ml-2 text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">x{l.count}</span>}
-                        </div>
-                        <div className="text-[10px] font-black text-blue-600 tracking-wider uppercase">{l.calories} KCAL</div>
-                      </div>
-                    </div>
+      {/* 2. FOOD INFO - Added min-w-0 and truncate to prevent pushing buttons off screen */}
+      <div className="truncate">
+        <div className="font-bold text-sm text-gray-700 truncate">
+          {l.food} {l.count && l.count > 1 && (
+            <span className="ml-1 text-[9px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full">
+              x{l.count}
+            </span>
+          )}
+        </div>
+        <div className="text-[9px] font-black text-blue-600 tracking-wider uppercase">
+          {l.calories} KCAL
+        </div>
+      </div>
+    </div>
 
-                    <div className="flex gap-4 items-center">
-                      {/* 3. EDIT BUTTON THIRD */}
-                      <button 
-                        onClick={() => initiateEdit(l)} 
-                        className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-[10px] font-black text-gray-400 hover:text-blue-600 transition-opacity"
-                      >
-                        EDIT
-                      </button>
+    <div className="flex gap-2 md:gap-4 items-center flex-shrink-0">
+      {/* 3. EDIT BUTTON - Reduced margin */}
+      <button 
+        onClick={() => initiateEdit(l)} 
+        className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-[9px] font-black text-gray-400 hover:text-blue-600 transition-opacity"
+      >
+        EDIT
+      </button>
 
-                      {/* 4. QUANTITY PILL LAST */}
-                      <div className="flex items-center bg-white rounded-xl shadow-sm border border-gray-100 p-1">
-                        <button onClick={() => handleSaveFood(l.food, l.calories, -1)} className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-red-500 font-bold">−</button>
-                        <div className="w-px h-4 bg-gray-100" />
-                        <button onClick={() => handleSaveFood(l.food, l.calories, 1)} className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-blue-600 font-bold">+</button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+      {/* 4. QUANTITY PILL - Slimmer buttons for mobile */}
+      <div className="flex items-center bg-white rounded-xl shadow-sm border border-gray-100 p-0.5 md:p-1">
+        <button onClick={() => handleSaveFood(l.food, l.calories, -1)} className="w-7 h-7 md:w-8 md:h-8 flex items-center justify-center text-gray-400 hover:text-red-500 font-bold">−</button>
+        <div className="w-px h-3 bg-gray-100" />
+        <button onClick={() => handleSaveFood(l.food, l.calories, 1)} className="w-7 h-7 md:w-8 md:h-8 flex items-center justify-center text-gray-400 hover:text-blue-600 font-bold">+</button>
+      </div>
+    </div>
+  </div>
+))}
               </div>
             </section>
 
