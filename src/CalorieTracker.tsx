@@ -265,7 +265,7 @@ const CalorieTracker: React.FC = () => {
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           <div className="lg:col-span-8 space-y-8">
-            <section className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-gray-100 h-auto min-h-[300px]">
+            <section className="bg-white rounded-[2.5rem] p-4 shadow-sm border border-gray-100 h-auto min-h-[100px]">
               <div className="flex justify-between items-center mb-8">
                 <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Log Breakdown</span>
                 <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="text-xs font-bold bg-gray-50 px-4 py-2 rounded-full border-none" />
