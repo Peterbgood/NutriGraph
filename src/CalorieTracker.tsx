@@ -73,6 +73,11 @@ const CalorieTracker: React.FC = () => {
   }, [logs, selectedDate]);
 
   const records = useMemo(() => {
+    const today = new Date();
+    const currentWeekStart = new Date(today);
+    currentWeekStart.setDate(today.getDate() - (today.getDay() === 0 ? 6 : today.getDay() - 1));
+    const currentWeekKey = getLocalDate(currentWeekStart);
+
     const weekMap: Record<string, number> = {};
     logs.filter(l => l.type === 'food').forEach(l => {
       const d = new Date(l.date + 'T00:00:00');
@@ -81,8 +86,18 @@ const CalorieTracker: React.FC = () => {
       const weekKey = getLocalDate(start);
       weekMap[weekKey] = (weekMap[weekKey] || 0) + l.calories;
     });
+
     const totals = Object.values(weekMap);
-    return { highest: totals.length ? Math.max(...totals) : 0, lowest: totals.length ? Math.min(...totals) : 0 };
+    const highest = totals.length ? Math.max(...totals) : 0;
+
+    // Filter out the current week for Record Low
+    const historicalTotals = Object.entries(weekMap)
+      .filter(([key]) => key !== currentWeekKey)
+      .map(([_, val]) => val);
+    
+    const lowest = historicalTotals.length ? Math.min(...historicalTotals) : 0;
+
+    return { highest, lowest };
   }, [logs]);
 
   const lifetimeWeightRecords = useMemo(() => {
@@ -148,7 +163,7 @@ const CalorieTracker: React.FC = () => {
     await updateDoc(doc(db, "health_logs", target.id!), { sortOrder: current.sortOrder });
   };
 
-  const { weekChartData, weeklyAverage } = useMemo(() => {
+  const { weekChartData, weeklyAverage, weeklyTotal } = useMemo(() => {
     const start = new Date();
     start.setDate(start.getDate() - (start.getDay() === 0 ? 6 : start.getDay() - 1) + (viewingWeekOffset * 7));
     const labels = []; const values = []; const colors = [];
@@ -165,7 +180,8 @@ const CalorieTracker: React.FC = () => {
     }
     return { 
       weekChartData: { labels, datasets: [{ data: values, backgroundColor: colors, borderRadius: 6 }] },
-      weeklyAverage: daysWithLogs > 0 ? Math.round(sum / daysWithLogs) : 0
+      weeklyAverage: daysWithLogs > 0 ? Math.round(sum / daysWithLogs) : 0,
+      weeklyTotal: sum
     };
   }, [logs, viewingWeekOffset]);
 
@@ -277,13 +293,11 @@ const CalorieTracker: React.FC = () => {
     className="flex justify-between items-center p-3 md:p-5 bg-gray-50 rounded-3xl group border border-transparent md:hover:border-gray-200 transition-all"
   >
     <div className="flex items-center gap-2 md:gap-4 min-w-0">
-      {/* 1. REORDER BUTTONS - Narrower gap and smaller targets for mobile */}
       <div className="flex flex-col gap-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
         <button onClick={() => moveItem(l.id!, 'up')} className="p-1 text-[10px] text-gray-400 hover:text-blue-600 leading-none">▲</button>
         <button onClick={() => moveItem(l.id!, 'down')} className="p-1 text-[10px] text-gray-400 hover:text-blue-600 leading-none">▼</button>
       </div>
 
-      {/* 2. FOOD INFO - Added min-w-0 and truncate to prevent pushing buttons off screen */}
       <div className="truncate">
         <div className="font-bold text-sm text-gray-700 truncate">
           {l.food} {l.count && l.count > 1 && (
@@ -299,7 +313,6 @@ const CalorieTracker: React.FC = () => {
     </div>
 
     <div className="flex gap-2 md:gap-4 items-center flex-shrink-0">
-      {/* 3. EDIT BUTTON - Reduced margin */}
       <button 
         onClick={() => initiateEdit(l)} 
         className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-[9px] font-black text-gray-400 hover:text-blue-600 transition-opacity"
@@ -307,7 +320,6 @@ const CalorieTracker: React.FC = () => {
         EDIT
       </button>
 
-      {/* 4. QUANTITY PILL - Slimmer buttons for mobile */}
       <div className="flex items-center bg-white rounded-xl shadow-sm border border-gray-100 p-0.5 md:p-1">
         <button onClick={() => handleSaveFood(l.food, l.calories, -1)} className="w-7 h-7 md:w-8 md:h-8 flex items-center justify-center text-gray-400 hover:text-red-500 font-bold">−</button>
         <div className="w-px h-3 bg-gray-100" />
@@ -360,11 +372,19 @@ const CalorieTracker: React.FC = () => {
               <div className="flex justify-between items-start mb-6">
                 <div className="flex flex-col">
                   <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Weekly Performance</span>
-                  <div className="mt-2">
-                    <p className="text-[9px] font-black text-gray-400 uppercase">Avg Daily Intake</p>
-                    <span className={`text-xl font-black ${weeklyAverage > 2000 ? 'text-red-500' : 'text-green-500'}`}>
-                      {weeklyAverage} <span className="text-[10px] uppercase">Kcal</span>
-                    </span>
+                  <div className="mt-2 flex gap-4">
+                    <div>
+                      <p className="text-[9px] font-black text-gray-400 uppercase">Avg Daily</p>
+                      <span className={`text-xl font-black ${weeklyAverage > 2000 ? 'text-red-500' : 'text-green-500'}`}>
+                        {weeklyAverage} <span className="text-[10px] uppercase">Kcal</span>
+                      </span>
+                    </div>
+                    <div>
+                      <p className="text-[9px] font-black text-gray-400 uppercase">Week Total</p>
+                      <span className="text-xl font-black text-blue-600">
+                        {weeklyTotal} <span className="text-[10px] uppercase">Kcal</span>
+                      </span>
+                    </div>
                   </div>
                 </div>
                 <div className="text-right">
