@@ -253,31 +253,49 @@ const CalorieTracker: React.FC = () => {
       <div className="max-w-7xl mx-auto space-y-8">
         
         {/* HEADER SECTION */}
-        <section className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-gray-100">
-          <div className="flex flex-col md:flex-row justify-between items-end mb-6 gap-4">
-            <div>
-              <h1 className="text-4xl font-semibold tracking-tight italic">NutriGraph<span className="text-blue-600">.</span></h1>
-              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Performance Logistics Dashboard</p>
-            </div>
-            <div className="flex gap-10 text-right">
-              <div>
-                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Current In-take</p>
-                <span className="text-3xl font-black">{dailyTotal}</span>
-                <span className="text-gray-400 font-bold ml-1">/ {getGoalForDate(selectedDate)}</span>
-              </div>
-              <div>
-                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Rolling Surplus</p>
-                <span className={`text-3xl font-black ${rollingSurplus < 0 ? 'text-red-500' : 'text-blue-600'}`}>
-                  {rollingSurplus > 0 ? `+${rollingSurplus}` : rollingSurplus}
-                </span>
-                <span className="text-gray-400 font-bold ml-1 text-xs uppercase">Kcal</span>
-              </div>
-            </div>
-          </div>
-          <div className="w-full bg-gray-100 h-3 rounded-full overflow-hidden">
-            <div className={`h-full transition-all duration-700 ease-out ${dailyTotal > getGoalForDate(selectedDate) ? 'bg-red-500' : 'bg-blue-600'}`} style={{ width: `${Math.min((dailyTotal/getGoalForDate(selectedDate))*100, 100)}%` }} />
-          </div>
-        </section>
+<section className="bg-white rounded-[2.5rem] p-6 md:p-8 shadow-sm border border-gray-100">
+  <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 gap-6">
+    <div>
+      <h1 className="text-3xl md:text-4xl font-semibold tracking-tight italic">NutriGraph<span className="text-blue-600">.</span></h1>
+      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Performance Logistics Dashboard</p>
+    </div>
+    
+    {/* Stats Container: Uses smaller text and tighter gaps on mobile */}
+    {/* Stats Container: Centered alignment for Remaining digits */}
+<div className="flex justify-between w-full md:w-auto md:gap-10 border-t md:border-none pt-4 md:pt-0">
+  
+  {/* In-take: Left aligned (or Right for symmetry) */}
+  <div className="flex-1 text-left md:text-right">
+    <p className="text-[8px] md:text-[10px] font-black text-gray-400 uppercase tracking-widest leading-tight">In-take</p>
+    <span className="text-xl md:text-3xl font-black">{dailyTotal}</span>
+    <span className="text-gray-400 font-bold ml-1 text-[10px] md:text-base">/{getGoalForDate(selectedDate)}</span>
+  </div>
+
+  {/* Remaining: Explicitly centered */}
+  <div className="flex-1 text-center">
+    <p className="text-[8px] md:text-[10px] font-black text-gray-400 uppercase tracking-widest leading-tight">Remaining</p>
+    <span className={`text-xl md:text-3xl font-black ${getGoalForDate(selectedDate) - dailyTotal < 0 ? 'text-red-500' : 'text-green-500'}`}>
+      {getGoalForDate(selectedDate) - dailyTotal}
+    </span>
+  </div>
+
+  {/* Rolling: Right aligned */}
+  <div className="flex-1 text-right">
+    <p className="text-[8px] md:text-[10px] font-black text-gray-400 uppercase tracking-widest leading-tight">Rolling</p>
+    <span className={`text-xl md:text-3xl font-black ${rollingSurplus < 0 ? 'text-red-500' : 'text-blue-600'}`}>
+      {rollingSurplus > 0 ? `+${rollingSurplus}` : rollingSurplus}
+    </span>
+  </div>
+</div>
+  </div>
+
+  <div className="w-full bg-gray-100 h-2 md:h-3 rounded-full overflow-hidden">
+    <div 
+      className={`h-full transition-all duration-700 ease-out ${dailyTotal > getGoalForDate(selectedDate) ? 'bg-red-500' : 'bg-blue-600'}`} 
+      style={{ width: `${Math.min((dailyTotal / getGoalForDate(selectedDate)) * 100, 100)}%` }} 
+    />
+  </div>
+</section>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           <div className="lg:col-span-8 space-y-8">
