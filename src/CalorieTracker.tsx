@@ -369,18 +369,49 @@ const CalorieTracker: React.FC = () => {
               </section>
 
               <section ref={formRef} className="bg-[#1d1d1f] rounded-[2.5rem] p-8 shadow-2xl text-white scroll-mt-8">
-                <span className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-8 block">Manual Entry</span>
-                <div className="space-y-4">
-                  <input value={food} onChange={e => setFood(e.target.value)} placeholder="Fuel Item" className="w-full bg-[#2d2d2f] border-none rounded-2xl p-4 text-sm" />
-                  <input type="number" value={calories} onChange={e => setCalories(e.target.value)} placeholder="Kcal" className="w-full bg-[#2d2d2f] border-none rounded-2xl p-4 text-sm" />
-                  <button onClick={() => handleSaveFood(food, calories)} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold text-sm shadow-xl hover:bg-blue-500 transition-all">
-                    {editingId ? 'UPDATE ENTRY' : 'ADD TO LOG'}
-                  </button>
-                  {editingId && (
-                    <button onClick={() => { setEditingId(null); setFood(''); setCalories(''); }} className="w-full text-[10px] font-black text-gray-500 uppercase">Cancel Edit</button>
-                  )}
-                </div>
-              </section>
+  <span className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-8 block">Manual Entry</span>
+  
+  {/* 1. Wrap the inputs in a form */}
+  <form 
+    onSubmit={(e) => {
+      e.preventDefault(); // 2. Prevent the page from refreshing
+      handleSaveFood(food, calories);
+    }} 
+    className="space-y-4"
+  >
+    <input 
+      value={food} 
+      onChange={e => setFood(e.target.value)} 
+      placeholder="Fuel Item" 
+      className="w-full bg-[#2d2d2f] border-none rounded-2xl p-4 text-sm" 
+    />
+    <input 
+      type="number" 
+      value={calories} 
+      onChange={e => setCalories(e.target.value)} 
+      placeholder="Kcal" 
+      className="w-full bg-[#2d2d2f] border-none rounded-2xl p-4 text-sm" 
+    />
+    
+    {/* 3. Ensure the button type is "submit" */}
+    <button 
+      type="submit" 
+      className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold text-sm shadow-xl hover:bg-blue-500 transition-all"
+    >
+      {editingId ? 'UPDATE ENTRY' : 'ADD TO LOG'}
+    </button>
+    
+    {editingId && (
+      <button 
+        type="button" // 4. Set cancel to "button" so it doesn't trigger a submit
+        onClick={() => { setEditingId(null); setFood(''); setCalories(''); }} 
+        className="w-full text-[10px] font-black text-gray-500 uppercase"
+      >
+        Cancel Edit
+      </button>
+    )}
+  </form>
+</section>
             </div>
           </div>
 
