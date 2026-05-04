@@ -31,7 +31,8 @@ const CalorieTracker: React.FC = () => {
   const [weightRange, setWeightRange] = useState<'1m' | '3m' | '1y'>('3m');
   const [pin, setPin] = useState('');
   const [isUnlocked, setIsUnlocked] = useState(false);
-  const [showExport, setShowExport] = useState(false); // NEW STATE
+  const [showExport, setShowExport] = useState(false);
+  const [selectedLogIds, setSelectedLogIds] = useState<string[]>([]);
   const formRef = useRef<HTMLDivElement>(null);
 
   // --- CSV Export Logic ---
@@ -66,7 +67,7 @@ const CalorieTracker: React.FC = () => {
 
   // Listen for Ctrl+Shift+E
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
+    const handleKeyDown: (e: KeyboardEvent) => void = (e) => {
       if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'e') {
         e.preventDefault();
         setShowExport(prev => !prev);
@@ -97,6 +98,10 @@ const CalorieTracker: React.FC = () => {
   const dailyTotal = useMemo(() => {
     return logs.filter(l => l.date === selectedDate && l.type === 'food').reduce((s, l) => s + l.calories, 0);
   }, [logs, selectedDate]);
+
+  const selectedCalories = useMemo(() => {
+    return logs.filter(l => selectedLogIds.includes(l.id!)).reduce((s, l) => s + l.calories, 0);
+  }, [logs, selectedLogIds]);
 
   const rollingSurplus = useMemo(() => {
     const selDateObj = new Date(selectedDate + 'T00:00:00');
@@ -291,6 +296,19 @@ const CalorieTracker: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#f5f5f7] text-[#1d1d1f] font-sans p-4 lg:p-12 relative">
+      {/* FLOATING SELECTED CALORIES BUTTON */}
+      {selectedLogIds.length > 0 && (
+        <div className={`fixed z-50 flex items-center bg-blue-600 text-white px-6 py-4 rounded-full font-black text-[10px] tracking-widest shadow-2xl border-2 border-white gap-4 ${showExport ? 'bottom-24' : 'bottom-8'} right-8`}>
+          <span>{selectedCalories} KCAL SELECTED</span>
+          <button 
+            onClick={() => setSelectedLogIds([])}
+            className="bg-white text-blue-600 px-2.5 py-1 rounded-full text-[8px] hover:bg-gray-100 transition-all cursor-pointer"
+          >
+            CLEAR
+          </button>
+        </div>
+      )}
+
       {/* HIDDEN EXPORT BUTTON - TRIGGERED BY CTRL+SHIFT+E */}
       {showExport && (
         <div className="fixed bottom-8 right-8 z-50 animate-bounce">
@@ -351,38 +369,55 @@ const CalorieTracker: React.FC = () => {
                 <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="text-xs font-bold bg-gray-50 px-4 py-2 rounded-full border-none" />
               </div>
               <div className="space-y-3">
-               {logs.filter(l => l.date === selectedDate && l.type === 'food').map((l) => (
-                <div key={l.id} className="flex justify-between items-center p-3 md:p-5 bg-gray-50 rounded-3xl group border border-transparent md:hover:border-gray-200 transition-all">
-                  <div className="flex items-center gap-2 md:gap-4 min-w-0">
-                    <div className="flex flex-col gap-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => moveItem(l.id!, 'up')} className="p-1 text-[10px] text-gray-400 hover:text-blue-600 leading-none">▲</button>
-                      <button onClick={() => moveItem(l.id!, 'down')} className="p-1 text-[10px] text-gray-400 hover:text-blue-600 leading-none">▼</button>
+               {logs.filter(l => l.date === selectedDate && l.type === 'food').map((l) => {
+                 const isSelected = selectedLogIds.includes(l.id!);
+                 return (
+                  <div 
+                    key={l.id} 
+                    onClick={() => {
+                      if (isSelected) {
+                        setSelectedLogIds(selectedLogIds.filter(id => id !== l.id));
+                      } else {
+                        setSelectedLogIds([...selectedLogIds, l.id!]);
+                      }
+                    }}
+                    className={`flex justify-between items-center p-3 md:p-5 rounded-3xl group border cursor-pointer transition-all ${
+                      isSelected 
+                      ? 'bg-blue-50 border-blue-300' 
+                      : 'bg-gray-50 border-transparent md:hover:border-gray-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 md:gap-4 min-w-0">
+                      <div className="flex flex-col gap-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                        <button onClick={(e) => { e.stopPropagation(); moveItem(l.id!, 'up'); }} className="p-1 text-[10px] text-gray-400 hover:text-blue-600 leading-none">▲</button>
+                        <button onClick={(e) => { e.stopPropagation(); moveItem(l.id!, 'down'); }} className="p-1 text-[10px] text-gray-400 hover:text-blue-600 leading-none">▼</button>
+                      </div>
+
+                      <div className="truncate">
+                        <div className="font-bold text-sm text-gray-700 truncate">
+                          {l.food} {l.count && l.count > 1 && (
+                            <span className="ml-1 text-[9px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full">
+                              x{l.count}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[9px] font-black text-blue-600 tracking-wider uppercase">
+                          {l.calories} KCAL
+                        </div>
+                      </div>
                     </div>
 
-                    <div className="truncate">
-                      <div className="font-bold text-sm text-gray-700 truncate">
-                        {l.food} {l.count && l.count > 1 && (
-                          <span className="ml-1 text-[9px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full">
-                            x{l.count}
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-[9px] font-black text-blue-600 tracking-wider uppercase">
-                        {l.calories} KCAL
+                    <div className="flex gap-2 md:gap-4 items-center flex-shrink-0">
+                      <button onClick={(e) => { e.stopPropagation(); initiateEdit(l); }} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-[9px] font-black text-gray-400 hover:text-blue-600 transition-opacity">EDIT</button>
+                      <div className="flex items-center bg-white rounded-xl shadow-sm border border-gray-100 p-0.5 md:p-1">
+                        <button onClick={(e) => { e.stopPropagation(); handleSaveFood(l.food, l.calories, -1); }} className="w-7 h-7 md:w-8 md:h-8 flex items-center justify-center text-gray-400 hover:text-red-500 font-bold">−</button>
+                        <div className="w-px h-3 bg-gray-100" />
+                        <button onClick={(e) => { e.stopPropagation(); handleSaveFood(l.food, l.calories, 1); }} className="w-7 h-7 md:w-8 md:h-8 flex items-center justify-center text-gray-400 hover:text-blue-600 font-bold">+</button>
                       </div>
                     </div>
                   </div>
-
-                  <div className="flex gap-2 md:gap-4 items-center flex-shrink-0">
-                    <button onClick={() => initiateEdit(l)} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-[9px] font-black text-gray-400 hover:text-blue-600 transition-opacity">EDIT</button>
-                    <div className="flex items-center bg-white rounded-xl shadow-sm border border-gray-100 p-0.5 md:p-1">
-                      <button onClick={() => handleSaveFood(l.food, l.calories, -1)} className="w-7 h-7 md:w-8 md:h-8 flex items-center justify-center text-gray-400 hover:text-red-500 font-bold">−</button>
-                      <div className="w-px h-3 bg-gray-100" />
-                      <button onClick={() => handleSaveFood(l.food, l.calories, 1)} className="w-7 h-7 md:w-8 md:h-8 flex items-center justify-center text-gray-400 hover:text-blue-600 font-bold">+</button>
-                    </div>
-                  </div>
-                </div>
-              ))}
+                 );
+               })}
               </div>
             </section>
 
