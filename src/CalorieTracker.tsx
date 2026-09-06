@@ -247,6 +247,30 @@ const CalorieTracker: React.FC = () => {
     };
   }, [logs, weightRange]);
 
+  const MAX_FILL_LABEL = 'Daily Max Fill';
+
+  const maxFillEntry = useMemo(() => {
+    return logs.find(l => l.date === selectedDate && l.type === 'food' && l.food === MAX_FILL_LABEL);
+  }, [logs, selectedDate]);
+
+  const handleToggleMaxFill = async () => {
+    if (maxFillEntry && maxFillEntry.id) {
+      await deleteDoc(doc(db, "health_logs", maxFillEntry.id));
+    } else {
+      const goal = getGoalForDate(selectedDate);
+      await addDoc(collection(db, "health_logs"), {
+        date: selectedDate, food: MAX_FILL_LABEL, calories: goal, type: 'food', weight: 0, count: 1,
+        sortOrder: Date.now()
+      });
+    }
+  };
+
+  const shiftDate = (days: number) => {
+    const d = new Date(selectedDate + 'T00:00:00');
+    d.setDate(d.getDate() + days);
+    setSelectedDate(getLocalDate(d));
+  };
+
   const initiateEdit = (log: HealthLog) => {
     setEditingId(log.id!);
     setFood(log.food);
@@ -364,9 +388,24 @@ const CalorieTracker: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           <div className="lg:col-span-8 space-y-8">
             <section className="bg-white rounded-[2.5rem] p-4 shadow-sm border border-gray-100 h-auto min-h-[100px]">
-              <div className="flex justify-between items-center mb-8">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-3">
                 <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Log Breakdown</span>
-                <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="text-xs font-bold bg-gray-50 px-4 py-2 rounded-full border-none" />
+                <div className="flex items-center gap-3 flex-wrap">
+                  <label className="flex items-center gap-2 bg-gray-50 px-4 py-2 rounded-full cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={!!maxFillEntry}
+                      onChange={handleToggleMaxFill}
+                      className="w-3.5 h-3.5 accent-blue-600"
+                    />
+                    <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Fill to Max</span>
+                  </label>
+                  <div className="flex items-center bg-gray-50 rounded-full p-1 gap-1">
+                    <button onClick={() => shiftDate(-1)} className="w-7 h-7 flex items-center justify-center rounded-full text-xs font-black text-gray-400 hover:bg-white hover:text-blue-600 transition-all">◀</button>
+                    <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="text-xs font-bold bg-transparent px-2 py-1 rounded-full border-none" />
+                    <button onClick={() => shiftDate(1)} className="w-7 h-7 flex items-center justify-center rounded-full text-xs font-black text-gray-400 hover:bg-white hover:text-blue-600 transition-all">▶</button>
+                  </div>
+                </div>
               </div>
               <div className="space-y-3">
                {logs.filter(l => l.date === selectedDate && l.type === 'food').map((l) => {
