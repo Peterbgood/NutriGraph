@@ -2,63 +2,38 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db } from './firebase';
 import { 
   collection, query, onSnapshot, addDoc, 
-  deleteDoc, doc, setDoc, updateDoc, orderBy 
+  deleteDoc, doc, updateDoc, orderBy 
 } from "firebase/firestore";
-import { 
-  Chart as ChartJS, CategoryScale, LinearScale, BarElement, 
-  Title, Tooltip, Legend, LineElement, PointElement, Filler 
-} from 'chart.js';
-import { Bar, Line } from 'react-chartjs-2';
 import { HealthLog, PresetCategory } from './types';
 import FOOD_PRESETS_DATA from './presets.json';
 
 const FOOD_PRESETS = FOOD_PRESETS_DATA as unknown as PresetCategory[];
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend, Filler);
-
-// --- Auto-Fill config ---
-// Extends HealthLog locally so we don't need to touch types.ts.
-type FillableLog = HealthLog & { autoFilled?: boolean };
-const LOW_CAL_THRESHOLD = 1200; // days with a manual total under this get topped up
-const AUTO_FILL_LABEL = 'Auto-Fill (Daily Target)';
-const AUTO_FILL_TOPUP_LABEL = 'Auto-Fill (Top-Up)';
-
-type DayStatus = 'manual' | 'autofilled' | 'under-threshold' | 'missing';
-
 const CalorieTracker: React.FC = () => {
   const getLocalDate = (date = new Date()) => date.toLocaleDateString('en-CA');
 
   // --- State Hooks ---
-  const [logs, setLogs] = useState<FillableLog[]>([]);
+  const [logs, setLogs] = useState<HealthLog[]>([]);
   const [selectedDate, setSelectedDate] = useState(getLocalDate());
-  const [viewingWeekOffset, setViewingWeekOffset] = useState(0);
   const [food, setFood] = useState('');
   const [calories, setCalories] = useState('');
-  const [weight, setWeight] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [showWeightLog, setShowWeightLog] = useState(false);
-  const [weightRange, setWeightRange] = useState<'1m' | '3m' | '1y'>('3m');
   const [pin, setPin] = useState('');
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [showExport, setShowExport] = useState(false);
   const [selectedLogIds, setSelectedLogIds] = useState<string[]>([]);
-  const [isBackfilling, setIsBackfilling] = useState(false);
-  const [showFillHistory, setShowFillHistory] = useState(false);
   const formRef = useRef<HTMLDivElement>(null);
 
   // --- CSV Export Logic ---
   const handleExport = () => {
     if (logs.length === 0) return;
 
-    const headers = ["Date", "Type", "Item", "Calories", "Weight", "Count", "AutoFilled"];
-    const rows = logs.map(log => [
+    const headers = ["Date", "Item", "Calories", "Count"];
+    const rows = logs.filter(l => l.type === 'food').map(log => [
       log.date,
-      log.type,
       log.food,
       log.calories,
-      log.weight || 0,
-      log.count || 1,
-      log.autoFilled ? 'yes' : 'no'
+      log.count || 1
     ]);
 
     const csvContent = [
@@ -92,7 +67,7 @@ const CalorieTracker: React.FC = () => {
   useEffect(() => {
     const q = query(collection(db, "health_logs"), orderBy("sortOrder", "asc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const logData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as FillableLog[];
+      const logData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as HealthLog[];
       setLogs(logData);
     });
     return () => unsubscribe();
@@ -114,144 +89,6 @@ const CalorieTracker: React.FC = () => {
   const selectedCalories = useMemo(() => {
     return logs.filter(l => selectedLogIds.includes(l.id!)).reduce((s, l) => s + l.calories, 0);
   }, [logs, selectedLogIds]);
-
-  const rollingSurplus = useMemo(() => {
-    const selDateObj = new Date(selectedDate + 'T00:00:00');
-    const startOfWeek = new Date(selDateObj);
-    const dayNum = selDateObj.getDay(); 
-    const diffToMonday = dayNum === 0 ? 6 : dayNum - 1;
-    startOfWeek.setDate(selDateObj.getDate() - diffToMonday);
-
-    let net = 0;
-    const currentIter = new Date(startOfWeek);
-    while (currentIter <= selDateObj) {
-      const dStr = getLocalDate(currentIter);
-      net += (getGoalForDate(dStr) - logs.filter(l => l.date === dStr && l.type === 'food').reduce((s, l) => s + l.calories, 0));
-      currentIter.setDate(currentIter.getDate() + 1);
-    }
-    return net;
-  }, [logs, selectedDate]);
-
-  const records = useMemo(() => {
-    const today = new Date();
-    const currentWeekStart = new Date(today);
-    currentWeekStart.setDate(today.getDate() - (today.getDay() === 0 ? 6 : today.getDay() - 1));
-    const currentWeekKey = getLocalDate(currentWeekStart);
-
-    const weekMap: Record<string, number> = {};
-    logs.filter(l => l.type === 'food').forEach(l => {
-      const d = new Date(l.date + 'T00:00:00');
-      const start = new Date(d);
-      start.setDate(d.getDate() - (d.getDay() === 0 ? 6 : d.getDay() - 1));
-      const weekKey = getLocalDate(start);
-      weekMap[weekKey] = (weekMap[weekKey] || 0) + l.calories;
-    });
-
-    const totals = Object.values(weekMap);
-    const highest = totals.length ? Math.max(...totals) : 0;
-
-    const historicalTotals = Object.entries(weekMap)
-      .filter(([key]) => key !== currentWeekKey)
-      .map(([_, val]) => val);
-    
-    const lowest = historicalTotals.length ? Math.min(...historicalTotals) : 0;
-
-    return { highest, lowest };
-  }, [logs]);
-
-  const lifetimeWeightRecords = useMemo(() => {
-    const weights = logs.filter(l => l.type === 'weight').map(l => l.weight);
-    return { min: weights.length ? Math.min(...weights) : 0, max: weights.length ? Math.max(...weights) : 0 };
-  }, [logs]);
-
-  const groupedWeights = useMemo(() => {
-    const weightLogs = logs.filter(l => l.type === 'weight').sort((a, b) => b.date.localeCompare(a.date));
-    const groups: Record<number, { weekNum: number, logs: FillableLog[], min: number, max: number }> = {};
-    weightLogs.forEach(l => {
-      const date = new Date(l.date + 'T00:00:00');
-      const startOfYear = new Date(date.getFullYear(), 0, 1);
-      const weekNum = Math.ceil((((date.getTime() - startOfYear.getTime()) / 86400000) + startOfYear.getDay() + 1) / 7);
-      if (!groups[weekNum]) groups[weekNum] = { weekNum, logs: [], min: Infinity, max: -Infinity };
-      groups[weekNum].logs.push(l);
-      groups[weekNum].min = Math.min(groups[weekNum].min, l.weight);
-      groups[weekNum].max = Math.max(groups[weekNum].max, l.weight);
-    });
-    return Object.values(groups).sort((a, b) => b.weekNum - a.weekNum);
-  }, [logs]);
-
-  // --- Auto-Fill: day-by-day status, computed live from current logs ---
-  // A day only counts once it's fully in the past (today is still "in progress" so it's excluded).
-  const dayStatusList = useMemo(() => {
-    const foodLogs = logs.filter(l => l.type === 'food');
-    if (foodLogs.length === 0) return [] as { date: string; status: DayStatus; total: number }[];
-
-    const today = getLocalDate();
-    const earliest = foodLogs.map(l => l.date).reduce((a, b) => (a < b ? a : b));
-    const list: { date: string; status: DayStatus; total: number }[] = [];
-
-    const cur = new Date(earliest + 'T00:00:00');
-    const todayObj = new Date(today + 'T00:00:00');
-
-    while (cur < todayObj) {
-      const dStr = getLocalDate(cur);
-      const dayLogs = foodLogs.filter(l => l.date === dStr);
-      const total = dayLogs.reduce((s, l) => s + l.calories, 0);
-      const hasAutoFill = dayLogs.some(l => l.autoFilled);
-      const manualTotal = dayLogs.filter(l => !l.autoFilled).reduce((s, l) => s + l.calories, 0);
-
-      let status: DayStatus;
-      if (dayLogs.length === 0) status = 'missing';
-      else if (hasAutoFill) status = 'autofilled';
-      else if (manualTotal < LOW_CAL_THRESHOLD) status = 'under-threshold';
-      else status = 'manual';
-
-      list.push({ date: dStr, status, total });
-      cur.setDate(cur.getDate() + 1);
-    }
-    return list.reverse(); // most recent first
-  }, [logs]);
-
-  const fillCounts = useMemo(() => {
-    const manualDays = dayStatusList.filter(d => d.status === 'manual');
-    const autoFilledDays = dayStatusList.filter(d => d.status === 'autofilled');
-    const needsFillDays = dayStatusList.filter(d => d.status === 'missing' || d.status === 'under-threshold');
-    return {
-      manual: manualDays.length,
-      autoFilled: autoFilledDays.length,
-      autoFilledCalories: autoFilledDays.reduce((s, d) => s + d.total, 0),
-      needsFill: needsFillDays.length,
-      needsFillCalories: needsFillDays.reduce((s, d) => s + Math.max(getGoalForDate(d.date) - d.total, 0), 0),
-      total: dayStatusList.length
-    };
-  }, [dayStatusList]);
-
-  // Deterministic doc IDs (autofill_<date> / autofill_topup_<date>) so re-running this
-  // can never create duplicate entries for the same day — it just overwrites its own doc.
-  const runAutoFill = async () => {
-    setIsBackfilling(true);
-    try {
-      const writes: Promise<any>[] = [];
-      dayStatusList.forEach(d => {
-        if (d.status === 'missing') {
-          writes.push(setDoc(doc(db, "health_logs", `autofill_${d.date}`), {
-            date: d.date, food: AUTO_FILL_LABEL, calories: getGoalForDate(d.date),
-            type: 'food', weight: 0, count: 1, sortOrder: new Date(d.date + 'T00:00:00').getTime(), autoFilled: true
-          }));
-        } else if (d.status === 'under-threshold') {
-          const topUp = getGoalForDate(d.date) - d.total;
-          if (topUp > 0) {
-            writes.push(setDoc(doc(db, "health_logs", `autofill_topup_${d.date}`), {
-              date: d.date, food: AUTO_FILL_TOPUP_LABEL, calories: topUp,
-              type: 'food', weight: 0, count: 1, sortOrder: new Date(d.date + 'T00:00:00').getTime() + 1, autoFilled: true
-            }));
-          }
-        }
-      });
-      await Promise.all(writes);
-    } finally {
-      setIsBackfilling(false);
-    }
-  };
 
   const handleSaveFood = async (f: string, c: string | number, delta: number = 0) => {
     if (!f || !c) return;
@@ -295,45 +132,7 @@ const CalorieTracker: React.FC = () => {
     await updateDoc(doc(db, "health_logs", target.id!), { sortOrder: current.sortOrder });
   };
 
-  const { weekChartData, weeklyAverage, weeklyTotal } = useMemo(() => {
-    const start = new Date();
-    start.setDate(start.getDate() - (start.getDay() === 0 ? 6 : start.getDay() - 1) + (viewingWeekOffset * 7));
-    const labels = []; const values = []; const colors = [];
-    let sum = 0, daysWithLogs = 0;
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(start); d.setDate(d.getDate() + i);
-      const dStr = getLocalDate(d);
-      const dayFoodLogs = logs.filter(l => l.date === dStr && l.type === 'food');
-      const dayTotal = dayFoodLogs.reduce((s, l) => s + l.calories, 0);
-      labels.push(d.toLocaleDateString('en-US', { weekday: 'short' }));
-      values.push(dayTotal);
-      colors.push(dayTotal > getGoalForDate(dStr) ? '#ef4444' : '#3b82f6');
-      if (dayFoodLogs.length > 0) { sum += dayTotal; daysWithLogs++; }
-    }
-    return { 
-      weekChartData: { labels, datasets: [{ data: values, backgroundColor: colors, borderRadius: 6 }] },
-      weeklyAverage: daysWithLogs > 0 ? Math.round(sum / daysWithLogs) : 0,
-      weeklyTotal: sum
-    };
-  }, [logs, viewingWeekOffset]);
-
-  const weightTrendData = useMemo(() => {
-    const rangeDays = weightRange === '1m' ? 30 : weightRange === '1y' ? 365 : 90;
-    const cutOffDate = new Date();
-    cutOffDate.setDate(cutOffDate.getDate() - rangeDays);
-    const sortedWeights = [...logs]
-      .filter(l => l.type === 'weight' && new Date(l.date + 'T00:00:00') >= cutOffDate)
-      .sort((a, b) => a.date.localeCompare(b.date));
-    return {
-      labels: sortedWeights.map(l => l.date.split('-').slice(1).join('/')),
-      datasets: [{ 
-        data: sortedWeights.map(l => l.weight), borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.05)', 
-        fill: true, tension: 0.4, pointRadius: weightRange === '1y' ? 1 : 4, pointBackgroundColor: '#fff', pointBorderWidth: 2 
-      }]
-    };
-  }, [logs, weightRange]);
-
-  const initiateEdit = (log: FillableLog) => {
+  const initiateEdit = (log: HealthLog) => {
     setEditingId(log.id!);
     setFood(log.food);
     setCalories(log.calories.toString());
@@ -407,35 +206,30 @@ const CalorieTracker: React.FC = () => {
         </div>
       )}
 
-      <div className="max-w-7xl mx-auto space-y-8">
+      <div className="max-w-4xl mx-auto space-y-8">
         {/* HEADER SECTION */}
         <section className="bg-white rounded-[2.5rem] p-6 md:p-8 shadow-sm border border-gray-100">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 gap-6">
             <div>
               <h1 className="text-3xl md:text-4xl font-semibold tracking-tight italic">NutriGraph<span className="text-blue-600">.</span></h1>
-              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Performance Logistics Dashboard</p>
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Daily Calorie Log</p>
             </div>
-            
-            <div className="flex justify-between w-full md:w-auto md:gap-10 border-t md:border-none pt-4 md:pt-0">
-              <div className="flex-1 text-left md:text-right">
-                <p className="text-[8px] md:text-[10px] font-black text-gray-400 uppercase tracking-widest leading-tight">In-take</p>
-                <span className="text-xl md:text-3xl font-black">{dailyTotal}</span>
-                <span className="text-gray-400 font-bold ml-1 text-[10px] md:text-base">/{getGoalForDate(selectedDate)}</span>
-              </div>
 
-              <div className="flex-1 text-center">
-                <p className="text-[8px] md:text-[10px] font-black text-gray-400 uppercase tracking-widest leading-tight">Remaining</p>
-                <span className={`text-xl md:text-3xl font-black ${getGoalForDate(selectedDate) - dailyTotal < 0 ? 'text-red-500' : 'text-green-500'}`}>
-                  {getGoalForDate(selectedDate) - dailyTotal}
-                </span>
-              </div>
+            <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="text-xs font-bold bg-gray-50 px-4 py-2 rounded-full border-none" />
+          </div>
 
-              <div className="flex-1 text-right">
-                <p className="text-[8px] md:text-[10px] font-black text-gray-400 uppercase tracking-widest leading-tight">Rolling</p>
-                <span className={`text-xl md:text-3xl font-black ${rollingSurplus < 0 ? 'text-red-500' : 'text-blue-600'}`}>
-                  {rollingSurplus > 0 ? `+${rollingSurplus}` : rollingSurplus}
-                </span>
-              </div>
+          <div className="flex justify-between w-full gap-6 mb-6">
+            <div className="flex-1">
+              <p className="text-[8px] md:text-[10px] font-black text-gray-400 uppercase tracking-widest leading-tight">Used</p>
+              <span className="text-2xl md:text-3xl font-black">{dailyTotal}</span>
+              <span className="text-gray-400 font-bold ml-1 text-[10px] md:text-base">/{getGoalForDate(selectedDate)}</span>
+            </div>
+
+            <div className="flex-1 text-right">
+              <p className="text-[8px] md:text-[10px] font-black text-gray-400 uppercase tracking-widest leading-tight">Remaining</p>
+              <span className={`text-2xl md:text-3xl font-black ${getGoalForDate(selectedDate) - dailyTotal < 0 ? 'text-red-500' : 'text-green-500'}`}>
+                {getGoalForDate(selectedDate) - dailyTotal}
+              </span>
             </div>
           </div>
 
@@ -447,287 +241,97 @@ const CalorieTracker: React.FC = () => {
           </div>
         </section>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          <div className="lg:col-span-8 space-y-8">
-            <section className="bg-white rounded-[2.5rem] p-4 shadow-sm border border-gray-100 h-auto min-h-[100px]">
-              <div className="flex justify-between items-center mb-8">
-                <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Log Breakdown</span>
-                <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="text-xs font-bold bg-gray-50 px-4 py-2 rounded-full border-none" />
-              </div>
-              <div className="space-y-3">
-               {logs.filter(l => l.date === selectedDate && l.type === 'food').map((l) => {
-                 const isSelected = selectedLogIds.includes(l.id!);
-
-                 // Generic styling for any auto-filled line item — visually distinct from
-                 // manual entries so it's obvious this calorie amount wasn't actually logged.
-                 if (l.autoFilled) {
-                   return (
-                    <div
-                      key={l.id}
-                      onClick={() => {
-                        if (isSelected) setSelectedLogIds(selectedLogIds.filter(id => id !== l.id));
-                        else setSelectedLogIds([...selectedLogIds, l.id!]);
-                      }}
-                      className={`flex justify-between items-center p-3 md:p-5 rounded-3xl group border border-dashed cursor-pointer transition-all ${
-                        isSelected ? 'bg-blue-50 border-blue-300' : 'bg-gray-50/60 border-gray-200'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 md:gap-4 min-w-0">
-                        <span className="text-[8px] font-black text-blue-500 bg-blue-100 px-2 py-1 rounded-full flex-shrink-0">🔵 AUTO</span>
-                        <div className="truncate">
-                          <div className="font-bold text-sm text-gray-500 italic truncate">{l.food}</div>
-                          <div className="text-[9px] font-black text-blue-400 tracking-wider uppercase">{l.calories} KCAL</div>
-                        </div>
-                      </div>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); deleteDoc(doc(db, "health_logs", l.id!)); }}
-                        className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-[9px] font-black text-gray-400 hover:text-red-500 transition-opacity flex-shrink-0"
-                      >
-                        REMOVE
-                      </button>
-                    </div>
-                   );
-                 }
-
-                 return (
-                  <div 
-                    key={l.id} 
-                    onClick={() => {
-                      if (isSelected) {
-                        setSelectedLogIds(selectedLogIds.filter(id => id !== l.id));
-                      } else {
-                        setSelectedLogIds([...selectedLogIds, l.id!]);
-                      }
-                    }}
-                    className={`flex justify-between items-center p-3 md:p-5 rounded-3xl group border cursor-pointer transition-all ${
-                      isSelected 
-                      ? 'bg-blue-50 border-blue-300' 
-                      : 'bg-gray-50 border-transparent md:hover:border-gray-200'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 md:gap-4 min-w-0">
-                      <div className="flex flex-col gap-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                        <button onClick={(e) => { e.stopPropagation(); moveItem(l.id!, 'up'); }} className="p-1 text-[10px] text-gray-400 hover:text-blue-600 leading-none">▲</button>
-                        <button onClick={(e) => { e.stopPropagation(); moveItem(l.id!, 'down'); }} className="p-1 text-[10px] text-gray-400 hover:text-blue-600 leading-none">▼</button>
-                      </div>
-
-                      <div className="truncate">
-                        <div className="font-bold text-sm text-gray-700 truncate flex items-center gap-1.5">
-                          <span className="text-green-500 text-xs" title="Manually logged">✅</span>
-                          {l.food} {l.count && l.count > 1 && (
-                            <span className="ml-1 text-[9px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full">
-                              x{l.count}
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-[9px] font-black text-blue-600 tracking-wider uppercase">
-                          {l.calories} KCAL
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex gap-2 md:gap-4 items-center flex-shrink-0">
-                      <button onClick={(e) => { e.stopPropagation(); initiateEdit(l); }} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-[9px] font-black text-gray-400 hover:text-blue-600 transition-opacity">EDIT</button>
-                      <div className="flex items-center bg-white rounded-xl shadow-sm border border-gray-100 p-0.5 md:p-1">
-                        <button onClick={(e) => { e.stopPropagation(); handleSaveFood(l.food, l.calories, -1); }} className="w-7 h-7 md:w-8 md:h-8 flex items-center justify-center text-gray-400 hover:text-red-500 font-bold">−</button>
-                        <div className="w-px h-3 bg-gray-100" />
-                        <button onClick={(e) => { e.stopPropagation(); handleSaveFood(l.food, l.calories, 1); }} className="w-7 h-7 md:w-8 md:h-8 flex items-center justify-center text-gray-400 hover:text-blue-600 font-bold">+</button>
-                      </div>
-                    </div>
-                  </div>
-                 );
-               })}
-              </div>
-            </section>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <section className="bg-white rounded-[2.5rem] p-4 shadow-sm border border-gray-100 h-96 overflow-hidden flex flex-col">
-                <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-6">Presets</span>
-                <div className="overflow-y-auto space-y-6 custom-scrollbar pr-2">
-                  {FOOD_PRESETS.map((cat, idx) => (
-                    <div key={idx}>
-                      <p className="text-[10px] font-black text-gray-300 uppercase mb-3">{cat.category}</p>
-                      <div className="flex flex-wrap gap-2">
-                        {cat.items.map((item, i) => (
-                          <button key={i} onClick={() => handleSaveFood(item.name, item.calories)} className="bg-white border border-gray-100 text-gray-600 px-4 py-2 rounded-xl text-xs font-bold hover:border-blue-600 hover:text-blue-600 transition-all shadow-sm">
-                            {item.name} <span className="text-blue-600 ml-1 font-black">{item.calories}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-
-              <section ref={formRef} className="bg-[#1d1d1f] rounded-[2.5rem] p-8 shadow-2xl text-white scroll-mt-8">
-                <span className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-8 block">Manual Entry</span>
-                <form onSubmit={(e) => { e.preventDefault(); handleSaveFood(food, calories); }} className="space-y-4">
-                  <input value={food} onChange={e => setFood(e.target.value)} placeholder="Fuel Item" className="w-full bg-[#2d2d2f] border-none rounded-2xl p-4 text-sm text-white" />
-                  <input type="number" value={calories} onChange={e => setCalories(e.target.value)} placeholder="Kcal" className="w-full bg-[#2d2d2f] border-none rounded-2xl p-4 text-sm text-white" />
-                  <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold text-sm shadow-xl hover:bg-blue-500 transition-all">
-                    {editingId ? 'UPDATE ENTRY' : 'ADD TO LOG'}
-                  </button>
-                  {editingId && (
-                    <button type="button" onClick={() => { setEditingId(null); setFood(''); setCalories(''); }} className="w-full text-[10px] font-black text-gray-500 uppercase">Cancel Edit</button>
-                  )}
-                </form>
-              </section>
-            </div>
+        {/* LOG BREAKDOWN */}
+        <section className="bg-white rounded-[2.5rem] p-4 shadow-sm border border-gray-100 h-auto min-h-[100px]">
+          <div className="flex justify-between items-center mb-8 px-2">
+            <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Log Breakdown</span>
           </div>
+          <div className="space-y-3">
+           {logs.filter(l => l.date === selectedDate && l.type === 'food').map((l) => {
+             const isSelected = selectedLogIds.includes(l.id!);
+             return (
+              <div 
+                key={l.id} 
+                onClick={() => {
+                  if (isSelected) {
+                    setSelectedLogIds(selectedLogIds.filter(id => id !== l.id));
+                  } else {
+                    setSelectedLogIds([...selectedLogIds, l.id!]);
+                  }
+                }}
+                className={`flex justify-between items-center p-3 md:p-5 rounded-3xl group border cursor-pointer transition-all ${
+                  isSelected 
+                  ? 'bg-blue-50 border-blue-300' 
+                  : 'bg-gray-50 border-transparent md:hover:border-gray-200'
+                }`}
+              >
+                <div className="flex items-center gap-2 md:gap-4 min-w-0">
+                  <div className="flex flex-col gap-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                    <button onClick={(e) => { e.stopPropagation(); moveItem(l.id!, 'up'); }} className="p-1 text-[10px] text-gray-400 hover:text-blue-600 leading-none">▲</button>
+                    <button onClick={(e) => { e.stopPropagation(); moveItem(l.id!, 'down'); }} className="p-1 text-[10px] text-gray-400 hover:text-blue-600 leading-none">▼</button>
+                  </div>
 
-          <div className="lg:col-span-4 space-y-8">
-            <section className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-gray-100">
-              <div className="flex justify-between items-start mb-6">
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Weekly Performance</span>
-                  <div className="mt-2 flex gap-4">
-                    <div>
-                      <p className="text-[9px] font-black text-gray-400 uppercase">Avg Daily</p>
-                      <span className={`text-xl font-black ${weeklyAverage > 2000 ? 'text-red-500' : 'text-green-500'}`}>
-                        {weeklyAverage} <span className="text-[10px] uppercase">Kcal</span>
-                      </span>
+                  <div className="truncate">
+                    <div className="font-bold text-sm text-gray-700 truncate">
+                      {l.food} {l.count && l.count > 1 && (
+                        <span className="ml-1 text-[9px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full">
+                          x{l.count}
+                        </span>
+                      )}
                     </div>
-                    <div>
-                      <p className="text-[9px] font-black text-gray-400 uppercase">Week Total</p>
-                      <span className="text-xl font-black text-blue-600">
-                        {weeklyTotal} <span className="text-[10px] uppercase">Kcal</span>
-                      </span>
+                    <div className="text-[9px] font-black text-blue-600 tracking-wider uppercase">
+                      {l.calories} KCAL
                     </div>
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="text-[9px] font-black text-blue-600 uppercase">Record Low: {records.lowest}</div>
-                  <div className="text-[9px] font-black text-red-400 uppercase">Record High: {records.highest}</div>
-                </div>
-              </div>
-              <div className="h-48 mb-4">
-                <Bar data={weekChartData} options={{ maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { display: true, grid: { color: '#f9fafb' }, ticks: { font: { size: 9, weight: 'bold' }, color: '#d1d5db', stepSize: 500 } }, x: { grid: { display: false }, ticks: { font: { size: 9, weight: 'bold' } } } } }} />
-              </div>
-              <div className="flex justify-between items-center bg-gray-50 p-2 rounded-full">
-                <button onClick={() => setViewingWeekOffset(v => v - 1)} className="px-4 py-1 text-[10px] font-black hover:bg-white rounded-full">PREV</button>
-                <button onClick={() => setViewingWeekOffset(0)} className="px-4 py-1 text-[10px] font-black bg-white shadow-sm rounded-full">NOW</button>
-                <button onClick={() => setViewingWeekOffset(v => v + 1)} className="px-4 py-1 text-[10px] font-black hover:bg-white rounded-full">NEXT</button>
-              </div>
-            </section>
 
-            <section className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-gray-100">
-              <div className="flex justify-between items-start mb-6">
-                <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Weight Dynamics</span>
-                <div className="text-right">
-                  <div className="text-[9px] font-black text-blue-600 uppercase">Ever Low: {lifetimeWeightRecords.min}</div>
-                  <div className="text-[9px] font-black text-red-400 uppercase">Ever High: {lifetimeWeightRecords.max}</div>
+                <div className="flex gap-2 md:gap-4 items-center flex-shrink-0">
+                  <button onClick={(e) => { e.stopPropagation(); initiateEdit(l); }} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-[9px] font-black text-gray-400 hover:text-blue-600 transition-opacity">EDIT</button>
+                  <div className="flex items-center bg-white rounded-xl shadow-sm border border-gray-100 p-0.5 md:p-1">
+                    <button onClick={(e) => { e.stopPropagation(); handleSaveFood(l.food, l.calories, -1); }} className="w-7 h-7 md:w-8 md:h-8 flex items-center justify-center text-gray-400 hover:text-red-500 font-bold">−</button>
+                    <div className="w-px h-3 bg-gray-100" />
+                    <button onClick={(e) => { e.stopPropagation(); handleSaveFood(l.food, l.calories, 1); }} className="w-7 h-7 md:w-8 md:h-8 flex items-center justify-center text-gray-400 hover:text-blue-600 font-bold">+</button>
+                  </div>
                 </div>
               </div>
-              <div className="h-40 mb-4"><Line data={weightTrendData} options={{ maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { display: false }, x: { grid: { display: false } } } }} /></div>
-              <div className="flex justify-center gap-2 mb-6 bg-gray-50 p-1 rounded-xl">
-                {(['1m', '3m', '1y'] as const).map((r) => (
-                  <button key={r} onClick={() => setWeightRange(r)} className={`flex-1 py-1.5 text-[9px] font-black rounded-lg transition-all ${weightRange === r ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400'}`}>{r.toUpperCase()}</button>
-                ))}
-              </div>
-              <div className="flex gap-2 mb-8">
-                <input type="number" step="0.1" value={weight} onChange={e => setWeight(e.target.value)} placeholder="Lbs" className="flex-1 bg-gray-50 border-none rounded-2xl p-4 text-sm" />
-                <button onClick={async () => { if(!weight) return; await addDoc(collection(db, "health_logs"), { date: selectedDate, food: 'Weight', calories: 0, weight: Number(weight), type: 'weight', sortOrder: Date.now() }); setWeight(''); }} className="bg-blue-600 text-white px-6 rounded-2xl font-bold text-xs">LOG</button>
-              </div>
-              <div className="space-y-4">
-                <button onClick={() => setShowWeightLog(!showWeightLog)} className="w-full py-3 bg-gray-50 text-[10px] font-black uppercase tracking-widest text-gray-400 rounded-2xl hover:bg-gray-100 transition-all">{showWeightLog ? 'Hide Detailed Log' : 'See Detailed Log'}</button>
-                {showWeightLog && groupedWeights.map((group) => (
-                  <div key={group.weekNum} className="bg-gray-50 rounded-[2rem] p-5 space-y-3">
-                    <div className="flex justify-between items-center border-b border-gray-200 pb-2 mb-2">
-                      <span className="text-[11px] font-black text-blue-600 uppercase">Week {group.weekNum}</span>
-                      <div className="flex gap-3 text-[9px] font-bold">
-                        <span className="text-gray-400 uppercase">Min: <span className="text-[#1d1d1f]">{group.min}</span></span>
-                        <span className="text-gray-400 uppercase">Max: <span className="text-[#1d1d1f]">{group.max}</span></span>
-                      </div>
-                    </div>
-                    {group.logs.map((w) => (
-                      <div key={w.id} className="flex justify-between items-center py-1 group">
-                        <div className="flex flex-col">
-                          <span className="text-[9px] font-black text-gray-300 uppercase">{new Date(w.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' })}</span>
-                          <span className="text-[10px] font-bold text-gray-500">{new Date(w.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <span className="font-black text-xs">{w.weight} <span className="text-[9px] text-gray-300">LB</span></span>
-                          <button onClick={() => deleteDoc(doc(db, "health_logs", w.id!))} className="opacity-0 group-hover:opacity-100 text-[10px] font-bold text-red-300 transition-all">✕</button>
-                        </div>
-                      </div>
+             );
+           })}
+          </div>
+        </section>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <section className="bg-white rounded-[2.5rem] p-4 shadow-sm border border-gray-100 h-96 overflow-hidden flex flex-col">
+            <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-6 px-2">Presets</span>
+            <div className="overflow-y-auto space-y-6 custom-scrollbar pr-2">
+              {FOOD_PRESETS.map((cat, idx) => (
+                <div key={idx}>
+                  <p className="text-[10px] font-black text-gray-300 uppercase mb-3">{cat.category}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {cat.items.map((item, i) => (
+                      <button key={i} onClick={() => handleSaveFood(item.name, item.calories)} className="bg-white border border-gray-100 text-gray-600 px-4 py-2 rounded-xl text-xs font-bold hover:border-blue-600 hover:text-blue-600 transition-all shadow-sm">
+                        {item.name} <span className="text-blue-600 ml-1 font-black">{item.calories}</span>
+                      </button>
                     ))}
                   </div>
-                ))}
-              </div>
-            </section>
-          </div>
-        </div>
-
-        {/* AUTO-FILL / DAY STATUS SECTION */}
-        <section className="bg-white rounded-[2.5rem] p-6 md:p-8 shadow-sm border border-gray-100">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-            <div>
-              <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Fill Status</span>
-              <p className="text-[10px] text-gray-400 mt-1">Missing days, or days under {LOW_CAL_THRESHOLD} kcal, get topped up to your daily target (1700 Mon–Thu / 2400 Fri–Sun).</p>
-            </div>
-            <button
-              onClick={runAutoFill}
-              disabled={isBackfilling || fillCounts.needsFill === 0}
-              className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold text-xs disabled:opacity-40 disabled:cursor-not-allowed hover:bg-blue-500 transition-all whitespace-nowrap"
-            >
-              {isBackfilling ? '⏳ FILLING…' : `RUN AUTO-FILL${fillCounts.needsFill > 0 ? ` (${fillCounts.needsFill} · ${fillCounts.needsFillCalories} KCAL)` : ''}`}
-            </button>
-          </div>
-
-          <div className="flex gap-8 mb-6 flex-wrap">
-            <div>
-              <p className="text-[9px] font-black text-gray-400 uppercase">✅ Logged Correctly</p>
-              <span className="text-2xl font-black text-green-500">{fillCounts.manual}</span>
-              <span className="text-[9px] font-bold text-gray-300 uppercase ml-1">days</span>
-            </div>
-            <div>
-              <p className="text-[9px] font-black text-gray-400 uppercase">🔵 Auto-Filled</p>
-              <span className="text-2xl font-black text-blue-500">{fillCounts.autoFilled}</span>
-              <span className="text-[9px] font-bold text-gray-300 uppercase ml-1">days · {fillCounts.autoFilledCalories} kcal</span>
-            </div>
-            {fillCounts.needsFill > 0 && (
-              <div>
-                <p className="text-[9px] font-black text-gray-400 uppercase">⚠️ Needs Fill</p>
-                <span className="text-2xl font-black text-amber-500">{fillCounts.needsFill}</span>
-                <span className="text-[9px] font-bold text-gray-300 uppercase ml-1">days · {fillCounts.needsFillCalories} kcal</span>
-              </div>
-            )}
-            <div>
-              <p className="text-[9px] font-black text-gray-400 uppercase">Days Tracked</p>
-              <span className="text-2xl font-black text-gray-700">{fillCounts.total}</span>
-            </div>
-          </div>
-
-          <button
-            onClick={() => setShowFillHistory(!showFillHistory)}
-            className="w-full py-3 bg-gray-50 text-[10px] font-black uppercase tracking-widest text-gray-400 rounded-2xl hover:bg-gray-100 transition-all mb-3"
-          >
-            {showFillHistory ? 'Hide Day-by-Day History' : 'See Day-by-Day History'}
-          </button>
-
-          {showFillHistory && (
-            <div className="max-h-72 overflow-y-auto space-y-2 custom-scrollbar pr-2">
-              {dayStatusList.map(d => (
-                <button
-                  key={d.date}
-                  onClick={() => setSelectedDate(d.date)}
-                  className="w-full flex justify-between items-center bg-gray-50 rounded-2xl px-4 py-2.5 hover:bg-gray-100 transition-all text-left"
-                >
-                  <span className="text-xs font-bold text-gray-600 w-28 flex-shrink-0">
-                    {new Date(d.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                  </span>
-                  <span className="text-[10px] font-bold text-gray-400 flex-1 text-center">{d.total} KCAL</span>
-                  <span className="text-xs font-black flex-shrink-0 text-right w-32">
-                    {d.status === 'manual' && <span className="text-green-500">✅ Logged</span>}
-                    {d.status === 'autofilled' && <span className="text-blue-500">🔵 Auto-Filled</span>}
-                    {d.status === 'under-threshold' && <span className="text-amber-500">⚠️ Low</span>}
-                    {d.status === 'missing' && <span className="text-red-400">⚠️ Missing</span>}
-                  </span>
-                </button>
+                </div>
               ))}
             </div>
-          )}
-        </section>
+          </section>
+
+          <section ref={formRef} className="bg-[#1d1d1f] rounded-[2.5rem] p-8 shadow-2xl text-white scroll-mt-8">
+            <span className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-8 block">Manual Entry</span>
+            <form onSubmit={(e) => { e.preventDefault(); handleSaveFood(food, calories); }} className="space-y-4">
+              <input value={food} onChange={e => setFood(e.target.value)} placeholder="Fuel Item" className="w-full bg-[#2d2d2f] border-none rounded-2xl p-4 text-sm text-white" />
+              <input type="number" value={calories} onChange={e => setCalories(e.target.value)} placeholder="Kcal" className="w-full bg-[#2d2d2f] border-none rounded-2xl p-4 text-sm text-white" />
+              <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold text-sm shadow-xl hover:bg-blue-500 transition-all">
+                {editingId ? 'UPDATE ENTRY' : 'ADD TO LOG'}
+              </button>
+              {editingId && (
+                <button type="button" onClick={() => { setEditingId(null); setFood(''); setCalories(''); }} className="w-full text-[10px] font-black text-gray-500 uppercase">Cancel Edit</button>
+              )}
+            </form>
+          </section>
+        </div>
       </div>
     </div>
   );
