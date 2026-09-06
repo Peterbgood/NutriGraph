@@ -124,6 +124,12 @@
         "icon": "fas fa-bread-slice"
       },
       {
+        "name": "Eggo",
+        "calories": 90,
+        "type": "bread",
+        "icon": "fas fa-bread-slice"
+      },
+      {
         "name": "White Bread",
         "calories": 70,
         "type": "bread",
