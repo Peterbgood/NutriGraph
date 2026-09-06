@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db } from './firebase';
 import { 
   collection, query, onSnapshot, addDoc, 
-  deleteDoc, doc, updateDoc, orderBy 
+  deleteDoc, doc, setDoc, updateDoc, orderBy 
 } from "firebase/firestore";
 import { 
   Chart as ChartJS, CategoryScale, LinearScale, BarElement, 
@@ -212,28 +212,37 @@ const CalorieTracker: React.FC = () => {
   }, [logs]);
 
   const fillCounts = useMemo(() => {
-    const manual = dayStatusList.filter(d => d.status === 'manual').length;
-    const autoFilled = dayStatusList.filter(d => d.status === 'autofilled').length;
-    const needsFill = dayStatusList.filter(d => d.status === 'missing' || d.status === 'under-threshold').length;
-    return { manual, autoFilled, needsFill, total: dayStatusList.length };
+    const manualDays = dayStatusList.filter(d => d.status === 'manual');
+    const autoFilledDays = dayStatusList.filter(d => d.status === 'autofilled');
+    const needsFillDays = dayStatusList.filter(d => d.status === 'missing' || d.status === 'under-threshold');
+    return {
+      manual: manualDays.length,
+      autoFilled: autoFilledDays.length,
+      autoFilledCalories: autoFilledDays.reduce((s, d) => s + d.total, 0),
+      needsFill: needsFillDays.length,
+      needsFillCalories: needsFillDays.reduce((s, d) => s + Math.max(getGoalForDate(d.date) - d.total, 0), 0),
+      total: dayStatusList.length
+    };
   }, [dayStatusList]);
 
+  // Deterministic doc IDs (autofill_<date> / autofill_topup_<date>) so re-running this
+  // can never create duplicate entries for the same day — it just overwrites its own doc.
   const runAutoFill = async () => {
     setIsBackfilling(true);
     try {
       const writes: Promise<any>[] = [];
       dayStatusList.forEach(d => {
         if (d.status === 'missing') {
-          writes.push(addDoc(collection(db, "health_logs"), {
+          writes.push(setDoc(doc(db, "health_logs", `autofill_${d.date}`), {
             date: d.date, food: AUTO_FILL_LABEL, calories: getGoalForDate(d.date),
-            type: 'food', weight: 0, count: 1, sortOrder: Date.now() + Math.random(), autoFilled: true
+            type: 'food', weight: 0, count: 1, sortOrder: new Date(d.date + 'T00:00:00').getTime(), autoFilled: true
           }));
         } else if (d.status === 'under-threshold') {
           const topUp = getGoalForDate(d.date) - d.total;
           if (topUp > 0) {
-            writes.push(addDoc(collection(db, "health_logs"), {
+            writes.push(setDoc(doc(db, "health_logs", `autofill_topup_${d.date}`), {
               date: d.date, food: AUTO_FILL_TOPUP_LABEL, calories: topUp,
-              type: 'food', weight: 0, count: 1, sortOrder: Date.now() + Math.random(), autoFilled: true
+              type: 'food', weight: 0, count: 1, sortOrder: new Date(d.date + 'T00:00:00').getTime() + 1, autoFilled: true
             }));
           }
         }
@@ -438,70 +447,6 @@ const CalorieTracker: React.FC = () => {
           </div>
         </section>
 
-        {/* AUTO-FILL / DAY STATUS SECTION */}
-        <section className="bg-white rounded-[2.5rem] p-6 md:p-8 shadow-sm border border-gray-100">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-            <div>
-              <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Fill Status</span>
-              <p className="text-[10px] text-gray-400 mt-1">Missing days, or days under {LOW_CAL_THRESHOLD} kcal, get topped up to your daily target (1700 Mon–Thu / 2400 Fri–Sun).</p>
-            </div>
-            <button
-              onClick={runAutoFill}
-              disabled={isBackfilling || fillCounts.needsFill === 0}
-              className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold text-xs disabled:opacity-40 disabled:cursor-not-allowed hover:bg-blue-500 transition-all whitespace-nowrap"
-            >
-              {isBackfilling ? '⏳ FILLING…' : `RUN AUTO-FILL${fillCounts.needsFill > 0 ? ` (${fillCounts.needsFill})` : ''}`}
-            </button>
-          </div>
-
-          <div className="flex gap-8 mb-6 flex-wrap">
-            <div>
-              <p className="text-[9px] font-black text-gray-400 uppercase">✅ Logged Correctly</p>
-              <span className="text-2xl font-black text-green-500">{fillCounts.manual}</span>
-            </div>
-            <div>
-              <p className="text-[9px] font-black text-gray-400 uppercase">🔵 Auto-Filled</p>
-              <span className="text-2xl font-black text-blue-500">{fillCounts.autoFilled}</span>
-            </div>
-            {fillCounts.needsFill > 0 && (
-              <div>
-                <p className="text-[9px] font-black text-gray-400 uppercase">⚠️ Needs Fill</p>
-                <span className="text-2xl font-black text-amber-500">{fillCounts.needsFill}</span>
-              </div>
-            )}
-            <div>
-              <p className="text-[9px] font-black text-gray-400 uppercase">Days Tracked</p>
-              <span className="text-2xl font-black text-gray-700">{fillCounts.total}</span>
-            </div>
-          </div>
-
-          <button
-            onClick={() => setShowFillHistory(!showFillHistory)}
-            className="w-full py-3 bg-gray-50 text-[10px] font-black uppercase tracking-widest text-gray-400 rounded-2xl hover:bg-gray-100 transition-all mb-3"
-          >
-            {showFillHistory ? 'Hide Day-by-Day History' : 'See Day-by-Day History'}
-          </button>
-
-          {showFillHistory && (
-            <div className="max-h-72 overflow-y-auto space-y-2 custom-scrollbar pr-2">
-              {dayStatusList.map(d => (
-                <div key={d.date} className="flex justify-between items-center bg-gray-50 rounded-2xl px-4 py-2.5">
-                  <span className="text-xs font-bold text-gray-600 w-28 flex-shrink-0">
-                    {new Date(d.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                  </span>
-                  <span className="text-[10px] font-bold text-gray-400 flex-1 text-center">{d.total} KCAL</span>
-                  <span className="text-xs font-black flex-shrink-0 text-right w-32">
-                    {d.status === 'manual' && <span className="text-green-500">✅ Logged</span>}
-                    {d.status === 'autofilled' && <span className="text-blue-500">🔵 Auto-Filled</span>}
-                    {d.status === 'under-threshold' && <span className="text-amber-500">⚠️ Low</span>}
-                    {d.status === 'missing' && <span className="text-red-400">⚠️ Missing</span>}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           <div className="lg:col-span-8 space-y-8">
             <section className="bg-white rounded-[2.5rem] p-4 shadow-sm border border-gray-100 h-auto min-h-[100px]">
@@ -512,6 +457,38 @@ const CalorieTracker: React.FC = () => {
               <div className="space-y-3">
                {logs.filter(l => l.date === selectedDate && l.type === 'food').map((l) => {
                  const isSelected = selectedLogIds.includes(l.id!);
+
+                 // Generic styling for any auto-filled line item — visually distinct from
+                 // manual entries so it's obvious this calorie amount wasn't actually logged.
+                 if (l.autoFilled) {
+                   return (
+                    <div
+                      key={l.id}
+                      onClick={() => {
+                        if (isSelected) setSelectedLogIds(selectedLogIds.filter(id => id !== l.id));
+                        else setSelectedLogIds([...selectedLogIds, l.id!]);
+                      }}
+                      className={`flex justify-between items-center p-3 md:p-5 rounded-3xl group border border-dashed cursor-pointer transition-all ${
+                        isSelected ? 'bg-blue-50 border-blue-300' : 'bg-gray-50/60 border-gray-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 md:gap-4 min-w-0">
+                        <span className="text-[8px] font-black text-blue-500 bg-blue-100 px-2 py-1 rounded-full flex-shrink-0">🔵 AUTO</span>
+                        <div className="truncate">
+                          <div className="font-bold text-sm text-gray-500 italic truncate">{l.food}</div>
+                          <div className="text-[9px] font-black text-blue-400 tracking-wider uppercase">{l.calories} KCAL</div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); deleteDoc(doc(db, "health_logs", l.id!)); }}
+                        className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-[9px] font-black text-gray-400 hover:text-red-500 transition-opacity flex-shrink-0"
+                      >
+                        REMOVE
+                      </button>
+                    </div>
+                   );
+                 }
+
                  return (
                   <div 
                     key={l.id} 
@@ -536,7 +513,7 @@ const CalorieTracker: React.FC = () => {
 
                       <div className="truncate">
                         <div className="font-bold text-sm text-gray-700 truncate flex items-center gap-1.5">
-                          {!l.autoFilled && <span className="text-green-500 text-xs" title="Manually logged">✅</span>}
+                          <span className="text-green-500 text-xs" title="Manually logged">✅</span>
                           {l.food} {l.count && l.count > 1 && (
                             <span className="ml-1 text-[9px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full">
                               x{l.count}
@@ -680,6 +657,77 @@ const CalorieTracker: React.FC = () => {
             </section>
           </div>
         </div>
+
+        {/* AUTO-FILL / DAY STATUS SECTION */}
+        <section className="bg-white rounded-[2.5rem] p-6 md:p-8 shadow-sm border border-gray-100">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+            <div>
+              <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Fill Status</span>
+              <p className="text-[10px] text-gray-400 mt-1">Missing days, or days under {LOW_CAL_THRESHOLD} kcal, get topped up to your daily target (1700 Mon–Thu / 2400 Fri–Sun).</p>
+            </div>
+            <button
+              onClick={runAutoFill}
+              disabled={isBackfilling || fillCounts.needsFill === 0}
+              className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-bold text-xs disabled:opacity-40 disabled:cursor-not-allowed hover:bg-blue-500 transition-all whitespace-nowrap"
+            >
+              {isBackfilling ? '⏳ FILLING…' : `RUN AUTO-FILL${fillCounts.needsFill > 0 ? ` (${fillCounts.needsFill} · ${fillCounts.needsFillCalories} KCAL)` : ''}`}
+            </button>
+          </div>
+
+          <div className="flex gap-8 mb-6 flex-wrap">
+            <div>
+              <p className="text-[9px] font-black text-gray-400 uppercase">✅ Logged Correctly</p>
+              <span className="text-2xl font-black text-green-500">{fillCounts.manual}</span>
+              <span className="text-[9px] font-bold text-gray-300 uppercase ml-1">days</span>
+            </div>
+            <div>
+              <p className="text-[9px] font-black text-gray-400 uppercase">🔵 Auto-Filled</p>
+              <span className="text-2xl font-black text-blue-500">{fillCounts.autoFilled}</span>
+              <span className="text-[9px] font-bold text-gray-300 uppercase ml-1">days · {fillCounts.autoFilledCalories} kcal</span>
+            </div>
+            {fillCounts.needsFill > 0 && (
+              <div>
+                <p className="text-[9px] font-black text-gray-400 uppercase">⚠️ Needs Fill</p>
+                <span className="text-2xl font-black text-amber-500">{fillCounts.needsFill}</span>
+                <span className="text-[9px] font-bold text-gray-300 uppercase ml-1">days · {fillCounts.needsFillCalories} kcal</span>
+              </div>
+            )}
+            <div>
+              <p className="text-[9px] font-black text-gray-400 uppercase">Days Tracked</p>
+              <span className="text-2xl font-black text-gray-700">{fillCounts.total}</span>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setShowFillHistory(!showFillHistory)}
+            className="w-full py-3 bg-gray-50 text-[10px] font-black uppercase tracking-widest text-gray-400 rounded-2xl hover:bg-gray-100 transition-all mb-3"
+          >
+            {showFillHistory ? 'Hide Day-by-Day History' : 'See Day-by-Day History'}
+          </button>
+
+          {showFillHistory && (
+            <div className="max-h-72 overflow-y-auto space-y-2 custom-scrollbar pr-2">
+              {dayStatusList.map(d => (
+                <button
+                  key={d.date}
+                  onClick={() => setSelectedDate(d.date)}
+                  className="w-full flex justify-between items-center bg-gray-50 rounded-2xl px-4 py-2.5 hover:bg-gray-100 transition-all text-left"
+                >
+                  <span className="text-xs font-bold text-gray-600 w-28 flex-shrink-0">
+                    {new Date(d.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                  </span>
+                  <span className="text-[10px] font-bold text-gray-400 flex-1 text-center">{d.total} KCAL</span>
+                  <span className="text-xs font-black flex-shrink-0 text-right w-32">
+                    {d.status === 'manual' && <span className="text-green-500">✅ Logged</span>}
+                    {d.status === 'autofilled' && <span className="text-blue-500">🔵 Auto-Filled</span>}
+                    {d.status === 'under-threshold' && <span className="text-amber-500">⚠️ Low</span>}
+                    {d.status === 'missing' && <span className="text-red-400">⚠️ Missing</span>}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
       </div>
     </div>
   );
