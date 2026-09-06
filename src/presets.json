@@ -113,13 +113,13 @@
     "items": [
       {
         "name": "Oatmeal",
-        "calories": 300,
+        "calories": 110,
         "type": "grain",
         "icon": "fas fa-bowl-rice"
       },
       {
         "name": "Whole Wheat Bread",
-        "calories": 110,
+        "calories": 45,
         "type": "bread",
         "icon": "fas fa-bread-slice"
       },
