@@ -474,5 +474,26 @@
         "protein": 1
       }
     ]
+  },
+  {
+    "category": "Soups",
+    "icon": "fas fa-bowl-food",
+    "collapseId": "collapseSoups",
+    "items": [
+      {
+        "name": "Campbell's Chicken Noodle Soup (can)",
+        "calories": 150,
+        "protein": 8,
+        "type": "soup",
+        "icon": "fas fa-bowl-food"
+      },
+      {
+        "name": "Ramen Noodles (pack)",
+        "calories": 380,
+        "protein": 8,
+        "type": "noodles",
+        "icon": "fas fa-bowl-food"
+      }
+    ]
   }
 ]
