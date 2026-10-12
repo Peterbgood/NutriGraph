@@ -14,6 +14,10 @@ import FOOD_PRESETS_DATA from './presets.json';
 
 const FOOD_PRESETS = FOOD_PRESETS_DATA as unknown as PresetCategory[];
 
+// Daily protein target (grams). ~0.8g per lb at 170 lbs — enough to hold
+// muscle while losing weight. Adjust as weight changes.
+const PROTEIN_GOAL = 140;
+
 ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend, Filler);
 
 const CalorieTracker: React.FC = () => {
@@ -25,8 +29,13 @@ const CalorieTracker: React.FC = () => {
   const [viewingWeekOffset, setViewingWeekOffset] = useState(0);
   const [food, setFood] = useState('');
   const [calories, setCalories] = useState('');
+  const [proteinInput, setProteinInput] = useState('');
   const [weight, setWeight] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [undoOp, setUndoOp] = useState<{
+    id: string; wasNew: boolean; prevCount: number;
+    prevCalories: number; prevProtein: number; label: string;
+  } | null>(null);
   const [showWeightLog, setShowWeightLog] = useState(false);
   const [weightRange, setWeightRange] = useState<'1m' | '3m' | '1y'>('3m');
   const [pin, setPin] = useState('');
@@ -39,12 +48,13 @@ const CalorieTracker: React.FC = () => {
   const handleExport = () => {
     if (logs.length === 0) return;
 
-    const headers = ["Date", "Type", "Item", "Calories", "Weight", "Count"];
+    const headers = ["Date", "Type", "Item", "Calories", "Protein (g)", "Weight", "Count"];
     const rows = logs.map(log => [
       log.date,
       log.type,
       log.food,
       log.calories,
+      log.protein || 0,
       log.weight || 0,
       log.count || 1
     ]);
@@ -97,6 +107,10 @@ const CalorieTracker: React.FC = () => {
 
   const dailyTotal = useMemo(() => {
     return logs.filter(l => l.date === selectedDate && l.type === 'food').reduce((s, l) => s + l.calories, 0);
+  }, [logs, selectedDate]);
+
+  const dailyProtein = useMemo(() => {
+    return Math.round(logs.filter(l => l.date === selectedDate && l.type === 'food').reduce((s, l) => s + (l.protein || 0), 0));
   }, [logs, selectedDate]);
 
   const selectedCalories = useMemo(() => {
@@ -167,37 +181,71 @@ const CalorieTracker: React.FC = () => {
     return Object.values(groups).sort((a, b) => b.weekNum - a.weekNum);
   }, [logs]);
 
-  const handleSaveFood = async (f: string, c: string | number, delta: number = 0) => {
+  const handleSaveFood = async (f: string, c: string | number, delta: number = 0, protein: number = 0) => {
     if (!f || !c) return;
     const existingEntry = logs.find(l => l.date === selectedDate && l.type === 'food' && l.food.toLowerCase() === f.toLowerCase() && !editingId);
 
     if (existingEntry && existingEntry.id) {
       const currentCount = existingEntry.count || 1;
       const unitCalories = existingEntry.calories / currentCount;
+      const unitProtein = (existingEntry.protein || 0) / currentCount;
       const change = delta !== 0 ? delta : 1;
       const newCount = currentCount + change;
 
       if (newCount <= 0) {
         await deleteDoc(doc(db, "health_logs", existingEntry.id));
       } else {
-        await updateDoc(doc(db, "health_logs", existingEntry.id), { 
-          count: newCount, 
-          calories: Math.round(unitCalories * newCount) 
+        const newCalories = Math.round(unitCalories * newCount);
+        const newProtein = Math.round(unitProtein * newCount);
+        await updateDoc(doc(db, "health_logs", existingEntry.id), {
+          count: newCount,
+          calories: newCalories,
+          protein: newProtein
+        });
+        setUndoOp({
+          id: existingEntry.id, wasNew: false, prevCount: currentCount,
+          prevCalories: existingEntry.calories, prevProtein: existingEntry.protein || 0, label: f
         });
       }
     } else if (editingId) {
-      await updateDoc(doc(db, "health_logs", editingId), { food: f, calories: Number(c) });
+      await updateDoc(doc(db, "health_logs", editingId), { food: f, calories: Number(c), protein: Number(protein) || 0 });
       setEditingId(null);
-      setFood(''); setCalories('');
+      setFood(''); setCalories(''); setProteinInput('');
     } else {
       const isCoffee = f.toLowerCase().includes('coffee');
-      await addDoc(collection(db, "health_logs"), { 
-        date: selectedDate, food: f, calories: Number(c), type: 'food', weight: 0, count: 1, 
-        sortOrder: isCoffee ? -Date.now() : Date.now() 
+      const newRef = await addDoc(collection(db, "health_logs"), {
+        date: selectedDate, food: f, calories: Number(c), protein: Number(protein) || 0, type: 'food', weight: 0, count: 1,
+        sortOrder: isCoffee ? -Date.now() : Date.now()
+      });
+      setUndoOp({
+        id: newRef.id, wasNew: true, prevCount: 0,
+        prevCalories: 0, prevProtein: 0, label: f
       });
     }
-    if (!editingId) { setFood(''); setCalories(''); }
+    if (!editingId) { setFood(''); setCalories(''); setProteinInput(''); }
   };
+
+  const handleUndo = async () => {
+    if (!undoOp) return;
+    const ref = doc(db, "health_logs", undoOp.id);
+    if (undoOp.wasNew) {
+      await deleteDoc(ref);
+    } else {
+      await updateDoc(ref, {
+        count: undoOp.prevCount,
+        calories: undoOp.prevCalories,
+        protein: undoOp.prevProtein
+      });
+    }
+    setUndoOp(null);
+  };
+
+  // Auto-dismiss the undo toast
+  useEffect(() => {
+    if (!undoOp) return;
+    const t = setTimeout(() => setUndoOp(null), 6000);
+    return () => clearTimeout(t);
+  }, [undoOp]);
 
   const moveItem = async (id: string, direction: 'up' | 'down') => {
     const dayLogs = logs.filter(l => l.date === selectedDate && l.type === 'food');
@@ -259,7 +307,7 @@ const CalorieTracker: React.FC = () => {
     } else {
       const goal = getGoalForDate(selectedDate);
       await addDoc(collection(db, "health_logs"), {
-        date: selectedDate, food: MAX_FILL_LABEL, calories: goal, type: 'food', weight: 0, count: 1,
+        date: selectedDate, food: MAX_FILL_LABEL, calories: goal, protein: 0, type: 'food', weight: 0, count: 1,
         sortOrder: Date.now()
       });
     }
@@ -275,6 +323,7 @@ const CalorieTracker: React.FC = () => {
     setEditingId(log.id!);
     setFood(log.food);
     setCalories(log.calories.toString());
+    setProteinInput(log.protein ? log.protein.toString() : '');
     formRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
@@ -333,6 +382,19 @@ const CalorieTracker: React.FC = () => {
         </div>
       )}
 
+      {/* UNDO TOAST FOR ONE-TAP PRESET LOGS */}
+      {undoOp && (
+        <div className="fixed z-50 bottom-8 left-8 flex items-center bg-[#1d1d1f] text-white px-6 py-4 rounded-full font-black text-[10px] tracking-widest shadow-2xl border-2 border-white gap-4">
+          <span>LOGGED {undoOp.label.toUpperCase()}</span>
+          <button
+            onClick={handleUndo}
+            className="bg-blue-600 text-white px-3 py-1 rounded-full text-[8px] hover:bg-blue-500 transition-all cursor-pointer"
+          >
+            UNDO
+          </button>
+        </div>
+      )}
+
       {/* HIDDEN EXPORT BUTTON - TRIGGERED BY CTRL+SHIFT+E */}
       {showExport && (
         <div className="fixed bottom-8 right-8 z-50 animate-bounce">
@@ -354,14 +416,22 @@ const CalorieTracker: React.FC = () => {
               <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Performance Logistics Dashboard</p>
             </div>
             
-            <div className="flex justify-between w-full md:w-auto md:gap-10 border-t md:border-none pt-4 md:pt-0">
+            <div className="grid grid-cols-2 gap-4 w-full md:w-auto md:flex md:gap-10 border-t md:border-none pt-4 md:pt-0">
               <div className="flex-1 text-left md:text-right">
                 <p className="text-[8px] md:text-[10px] font-black text-gray-400 uppercase tracking-widest leading-tight">In-take</p>
                 <span className="text-xl md:text-3xl font-black">{dailyTotal}</span>
                 <span className="text-gray-400 font-bold ml-1 text-[10px] md:text-base">/{getGoalForDate(selectedDate)}</span>
               </div>
 
-              <div className="flex-1 text-center">
+              <div className="flex-1 text-right md:text-center">
+                <p className="text-[8px] md:text-[10px] font-black text-gray-400 uppercase tracking-widest leading-tight" title="Daily protein — 140g helps hold muscle while you lose weight">Protein</p>
+                <span className={`text-xl md:text-3xl font-black ${dailyProtein >= PROTEIN_GOAL ? 'text-green-500' : 'text-blue-600'}`}>
+                  {dailyProtein}
+                </span>
+                <span className="text-gray-400 font-bold ml-1 text-[10px] md:text-base">/{PROTEIN_GOAL}g</span>
+              </div>
+
+              <div className="flex-1 text-left md:text-center">
                 <p className="text-[8px] md:text-[10px] font-black text-gray-400 uppercase tracking-widest leading-tight">Remaining</p>
                 <span className={`text-xl md:text-3xl font-black ${getGoalForDate(selectedDate) - dailyTotal < 0 ? 'text-red-500' : 'text-green-500'}`}>
                   {getGoalForDate(selectedDate) - dailyTotal}
@@ -369,7 +439,7 @@ const CalorieTracker: React.FC = () => {
               </div>
 
               <div className="flex-1 text-right">
-                <p className="text-[8px] md:text-[10px] font-black text-gray-400 uppercase tracking-widest leading-tight">Rolling</p>
+                <p className="text-[8px] md:text-[10px] font-black text-gray-400 uppercase tracking-widest leading-tight" title="Week-to-date balance vs your daily goals (Mon through the selected day). Positive means calories banked under budget.">Rolling</p>
                 <span className={`text-xl md:text-3xl font-black ${rollingSurplus < 0 ? 'text-red-500' : 'text-blue-600'}`}>
                   {rollingSurplus > 0 ? `+${rollingSurplus}` : rollingSurplus}
                 </span>
@@ -391,7 +461,7 @@ const CalorieTracker: React.FC = () => {
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-3">
                 <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Log Breakdown</span>
                 <div className="flex items-center gap-3 flex-wrap">
-                  <label className="flex items-center gap-2 bg-gray-50 px-4 py-2 rounded-full cursor-pointer select-none">
+                  <label className="flex items-center gap-2 bg-gray-50 px-4 py-2 rounded-full cursor-pointer select-none" title="Logs a placeholder entry for your full daily calorie goal. Use it on days you eat out and don't want to itemize everything.">
                     <input
                       type="checkbox"
                       checked={!!maxFillEntry}
@@ -442,6 +512,9 @@ const CalorieTracker: React.FC = () => {
                         </div>
                         <div className="text-[9px] font-black text-blue-600 tracking-wider uppercase">
                           {l.calories} KCAL
+                          {(l.protein || 0) > 0 && (
+                            <span className="text-gray-400"> · {Math.round(l.protein!)}G PROTEIN</span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -469,8 +542,11 @@ const CalorieTracker: React.FC = () => {
                       <p className="text-[10px] font-black text-gray-300 uppercase mb-3">{cat.category}</p>
                       <div className="flex flex-wrap gap-2">
                         {cat.items.map((item, i) => (
-                          <button key={i} onClick={() => handleSaveFood(item.name, item.calories)} className="bg-white border border-gray-100 text-gray-600 px-4 py-2 rounded-xl text-xs font-bold hover:border-blue-600 hover:text-blue-600 transition-all shadow-sm">
+                          <button key={i} onClick={() => handleSaveFood(item.name, item.calories, 0, item.protein || 0)} className="bg-white border border-gray-100 text-gray-600 px-4 py-2 rounded-xl text-xs font-bold hover:border-blue-600 hover:text-blue-600 transition-all shadow-sm">
                             {item.name} <span className="text-blue-600 ml-1 font-black">{item.calories}</span>
+                            {(item.protein || 0) > 0 && (
+                              <span className="text-gray-400 ml-1 font-bold">{item.protein}g</span>
+                            )}
                           </button>
                         ))}
                       </div>
@@ -481,14 +557,17 @@ const CalorieTracker: React.FC = () => {
 
               <section ref={formRef} className="bg-[#1d1d1f] rounded-[2.5rem] p-8 shadow-2xl text-white scroll-mt-8">
                 <span className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-8 block">Manual Entry</span>
-                <form onSubmit={(e) => { e.preventDefault(); handleSaveFood(food, calories); }} className="space-y-4">
+                <form onSubmit={(e) => { e.preventDefault(); handleSaveFood(food, calories, 0, Number(proteinInput) || 0); }} className="space-y-4">
                   <input value={food} onChange={e => setFood(e.target.value)} placeholder="Fuel Item" className="w-full bg-[#2d2d2f] border-none rounded-2xl p-4 text-sm text-white" />
-                  <input type="number" value={calories} onChange={e => setCalories(e.target.value)} placeholder="Kcal" className="w-full bg-[#2d2d2f] border-none rounded-2xl p-4 text-sm text-white" />
+                  <div className="flex gap-4">
+                    <input type="number" value={calories} onChange={e => setCalories(e.target.value)} placeholder="Kcal" className="w-full bg-[#2d2d2f] border-none rounded-2xl p-4 text-sm text-white" />
+                    <input type="number" value={proteinInput} onChange={e => setProteinInput(e.target.value)} placeholder="Protein (g)" className="w-full bg-[#2d2d2f] border-none rounded-2xl p-4 text-sm text-white" />
+                  </div>
                   <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold text-sm shadow-xl hover:bg-blue-500 transition-all">
                     {editingId ? 'UPDATE ENTRY' : 'ADD TO LOG'}
                   </button>
                   {editingId && (
-                    <button type="button" onClick={() => { setEditingId(null); setFood(''); setCalories(''); }} className="w-full text-[10px] font-black text-gray-500 uppercase">Cancel Edit</button>
+                    <button type="button" onClick={() => { setEditingId(null); setFood(''); setCalories(''); setProteinInput(''); }} className="w-full text-[10px] font-black text-gray-500 uppercase">Cancel Edit</button>
                   )}
                 </form>
               </section>
@@ -516,8 +595,8 @@ const CalorieTracker: React.FC = () => {
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-[9px] font-black text-blue-600 uppercase">Record Low: {records.lowest}</div>
-                  <div className="text-[9px] font-black text-red-400 uppercase">Record High: {records.highest}</div>
+                  <div className="text-[9px] font-black text-blue-600 uppercase" title="Lowest full-week calorie total on record (excludes the current week)">Weekly Low: {records.lowest}</div>
+                  <div className="text-[9px] font-black text-red-400 uppercase" title="Highest full-week calorie total on record">Weekly High: {records.highest}</div>
                 </div>
               </div>
               <div className="h-48 mb-4">

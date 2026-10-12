@@ -4,6 +4,7 @@ export interface HealthLog {
   date: string;
   food: string;
   calories: number;
+  protein?: number;
   type: 'food' | 'weight';
   weight: number;
   sortOrder: number;
@@ -13,6 +14,7 @@ export interface HealthLog {
 export interface PresetItem {
   name: string;
   calories: number;
+  protein?: number;
 }
 
 export interface PresetCategory {
