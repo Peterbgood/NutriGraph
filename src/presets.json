@@ -8,10 +8,9 @@
         "name": "Coffee",
         "calories": 160,
         "type": "coffee",
-        "icon": "fas fa-mug-hot"
+        "icon": "fas fa-mug-hot",
+        "protein": 2
       }
-     
-      
     ]
   },
   {
@@ -23,31 +22,36 @@
         "name": "Avocado",
         "calories": 250,
         "type": "fruit",
-        "icon": "fas fa-seedling"
+        "icon": "fas fa-seedling",
+        "protein": 3
       },
       {
         "name": "Banana",
         "calories": 100,
         "type": "fruit",
-        "icon": "fas fa-leaf"
+        "icon": "fas fa-leaf",
+        "protein": 1
       },
       {
         "name": "Pear",
         "calories": 100,
         "type": "fruit",
-        "icon": "fas fa-lemon"
+        "icon": "fas fa-lemon",
+        "protein": 1
       },
       {
         "name": "Apple",
         "calories": 95,
         "type": "fruit",
-        "icon": "fas fa-apple-alt"
+        "icon": "fas fa-apple-alt",
+        "protein": 0
       },
       {
         "name": "Peach",
         "calories": 70,
         "type": "fruit",
-        "icon": "fas fa-leaf"
+        "icon": "fas fa-leaf",
+        "protein": 1
       }
     ]
   },
@@ -60,49 +64,57 @@
         "name": "Milk",
         "calories": 150,
         "type": "dairy",
-        "icon": "fas fa-glass-water"
+        "icon": "fas fa-glass-water",
+        "protein": 8
       },
       {
         "name": "Yogurt",
         "calories": 80,
         "type": "dairy",
-        "icon": "fas fa-bowl-food"
+        "icon": "fas fa-bowl-food",
+        "protein": 8
       },
       {
         "name": "Almond Milk (Unsweetened)",
         "calories": 80,
         "type": "dairy-alt",
-        "icon": "fas fa-glass-water"
+        "icon": "fas fa-glass-water",
+        "protein": 1
       },
       {
         "name": "Cheese",
         "calories": 80,
         "type": "cheese",
-        "icon": "fas fa-cheese"
+        "icon": "fas fa-cheese",
+        "protein": 6
       },
       {
         "name": "Cream Cheese",
         "calories": 80,
         "type": "cheese",
-        "icon": "fas fa-cheese"
+        "icon": "fas fa-cheese",
+        "protein": 2
       },
       {
         "name": "Eggs",
         "calories": 70,
         "type": "protein",
-        "icon": "fas fa-egg"
+        "icon": "fas fa-egg",
+        "protein": 6
       },
       {
         "name": "Cheese (Light)",
         "calories": 50,
         "type": "cheese",
-        "icon": "fas fa-cheese"
+        "icon": "fas fa-cheese",
+        "protein": 5
       },
       {
         "name": "Almond Milk (Splash)",
         "calories": 30,
         "type": "dairy-alt",
-        "icon": "fas fa-glass-water"
+        "icon": "fas fa-glass-water",
+        "protein": 0
       }
     ]
   },
@@ -115,31 +127,36 @@
         "name": "Oatmeal",
         "calories": 110,
         "type": "grain",
-        "icon": "fas fa-bowl-rice"
+        "icon": "fas fa-bowl-rice",
+        "protein": 4
       },
       {
         "name": "Whole Wheat Bread",
         "calories": 45,
         "type": "bread",
-        "icon": "fas fa-bread-slice"
+        "icon": "fas fa-bread-slice",
+        "protein": 2
       },
       {
         "name": "Eggo",
         "calories": 90,
         "type": "bread",
-        "icon": "fas fa-bread-slice"
+        "icon": "fas fa-bread-slice",
+        "protein": 2
       },
       {
         "name": "White Bread",
         "calories": 70,
         "type": "bread",
-        "icon": "fas fa-bread-slice"
+        "icon": "fas fa-bread-slice",
+        "protein": 2
       },
       {
         "name": "Rye Bread",
         "calories": 35,
         "type": "bread",
-        "icon": "fas fa-bread-slice"
+        "icon": "fas fa-bread-slice",
+        "protein": 1
       }
     ]
   },
@@ -152,31 +169,36 @@
         "name": "Publix Sub",
         "calories": 500,
         "type": "meal",
-        "icon": "fas fa-sandwich"
+        "icon": "fas fa-sandwich",
+        "protein": 25
       },
       {
         "name": "Beans",
         "calories": 440,
         "type": "legumes",
-        "icon": "fas fa-seedling"
+        "icon": "fas fa-seedling",
+        "protein": 18
       },
       {
         "name": "Peanut Butter",
         "calories": 100,
         "type": "spread",
-        "icon": "fas fa-jar"
+        "icon": "fas fa-jar",
+        "protein": 4
       },
       {
         "name": "Salami",
         "calories": 50,
         "type": "meat",
-        "icon": "fas fa-bacon"
+        "icon": "fas fa-bacon",
+        "protein": 3
       },
       {
         "name": "Ham",
         "calories": 50,
         "type": "meat",
-        "icon": "fas fa-drumstick-bite"
+        "icon": "fas fa-drumstick-bite",
+        "protein": 4
       }
     ]
   },
@@ -189,97 +211,113 @@
         "name": "Fried Sandwich",
         "calories": 420,
         "type": "sandwich",
-        "icon": "fas fa-hamburger"
+        "icon": "fas fa-hamburger",
+        "protein": 29
       },
       {
         "name": "Fries",
         "calories": 440,
         "type": "side",
-        "icon": "fas fa-box-archive"
+        "icon": "fas fa-box-archive",
+        "protein": 6
       },
       {
         "name": "Sprite (12oz)",
         "calories": 160,
         "type": "soda",
-        "icon": "fas fa-glass-water"
+        "icon": "fas fa-glass-water",
+        "protein": 0
       },
       {
         "name": "Sausage Sandwich",
         "calories": 620,
         "type": "breakfast",
-        "icon": "fas fa-bread-slice"
+        "icon": "fas fa-bread-slice",
+        "protein": 21
       },
       {
         "name": "Milkshake",
         "calories": 560,
         "type": "dessert",
-        "icon": "fas fa-ice-cream"
+        "icon": "fas fa-ice-cream",
+        "protein": 13
       },
       {
         "name": "Deluxe Sandwich",
         "calories": 490,
         "type": "sandwich",
-        "icon": "fas fa-hamburger"
+        "icon": "fas fa-hamburger",
+        "protein": 29
       },
       {
         "name": "Biscuit Sausage",
         "calories": 490,
         "type": "breakfast",
-        "icon": "fas fa-bread-slice"
+        "icon": "fas fa-bread-slice",
+        "protein": 15
       },
       {
         "name": "Biscuit Sandwich",
         "calories": 460,
         "type": "breakfast",
-        "icon": "fas fa-bread-slice"
+        "icon": "fas fa-bread-slice",
+        "protein": 17
       },
       {
         "name": "Mac and Cheese",
         "calories": 450,
         "type": "side",
-        "icon": "fas fa-bowl-food"
+        "icon": "fas fa-bowl-food",
+        "protein": 19
       },
       {
         "name": "Chicken Strips",
         "calories": 410,
         "type": "chicken",
-        "icon": "fas fa-drumstick-bite"
+        "icon": "fas fa-drumstick-bite",
+        "protein": 36
       },
       {
         "name": "Grilled Chicken Sandwich",
         "calories": 390,
         "type": "sandwich",
-        "icon": "fas fa-hamburger"
+        "icon": "fas fa-hamburger",
+        "protein": 28
       },
       {
         "name": "12ct Nuggets",
         "calories": 380,
         "type": "chicken",
-        "icon": "fas fa-drumstick-bite"
+        "icon": "fas fa-drumstick-bite",
+        "protein": 36
       },
       {
         "name": "Lemonade Shake",
         "calories": 320,
         "type": "dessert",
-        "icon": "fas fa-lemon"
+        "icon": "fas fa-lemon",
+        "protein": 5
       },
       {
         "name": "8ct Nuggets",
         "calories": 250,
         "type": "chicken",
-        "icon": "fas fa-drumstick-bite"
+        "icon": "fas fa-drumstick-bite",
+        "protein": 24
       },
       {
         "name": "12ct Grilled Nuggets",
         "calories": 200,
         "type": "chicken",
-        "icon": "fas fa-drumstick-bite"
+        "icon": "fas fa-drumstick-bite",
+        "protein": 38
       },
       {
         "name": "Zesty Buffalo Sauce",
         "calories": 25,
         "type": "sauce",
-        "icon": "fas fa-pepper-hot"
+        "icon": "fas fa-pepper-hot",
+        "protein": 0
       }
     ]
   },
@@ -292,31 +330,36 @@
         "name": "Big Mac",
         "calories": 550,
         "type": "sandwich",
-        "icon": "fas fa-hamburger"
+        "icon": "fas fa-hamburger",
+        "protein": 25
       },
       {
         "name": "Quarter Pounder",
         "calories": 520,
         "type": "sandwich",
-        "icon": "fas fa-hamburger"
+        "icon": "fas fa-hamburger",
+        "protein": 30
       },
       {
         "name": "Breakfast Sandwich",
         "calories": 480,
         "type": "breakfast",
-        "icon": "fas fa-bread-slice"
+        "icon": "fas fa-bread-slice",
+        "protein": 26
       },
       {
         "name": "Fries",
         "calories": 440,
         "type": "side",
-        "icon": "fas fa-box-archive"
+        "icon": "fas fa-box-archive",
+        "protein": 6
       },
       {
         "name": "Chicken Nuggets",
         "calories": 410,
         "type": "chicken",
-        "icon": "fas fa-drumstick-bite"
+        "icon": "fas fa-drumstick-bite",
+        "protein": 22
       }
     ]
   },
@@ -329,25 +372,29 @@
         "name": "Salsarita Bowl",
         "calories": 800,
         "type": "meal",
-        "icon": "fas fa-bowl-food"
+        "icon": "fas fa-bowl-food",
+        "protein": 35
       },
       {
         "name": "Salsarita Quesadilla",
         "calories": 590,
         "type": "meal",
-        "icon": "fas fa-cheese"
+        "icon": "fas fa-cheese",
+        "protein": 28
       },
       {
         "name": "Taco Bell Quesadilla",
         "calories": 510,
         "type": "meal",
-        "icon": "fas fa-cheese"
+        "icon": "fas fa-cheese",
+        "protein": 27
       },
       {
         "name": "Taco Bell Chalupa",
         "calories": 360,
         "type": "meal",
-        "icon": "fas fa-cheese"
+        "icon": "fas fa-cheese",
+        "protein": 14
       }
     ]
   },
@@ -360,61 +407,71 @@
         "name": "Bagel",
         "calories": 450,
         "type": "bread",
-        "icon": "fas fa-circle-dot"
+        "icon": "fas fa-circle-dot",
+        "protein": 9
       },
       {
         "name": "Breakfast Sandwich",
         "calories": 470,
         "type": "breakfast",
-        "icon": "fas fa-bread-slice"
+        "icon": "fas fa-bread-slice",
+        "protein": 26
       },
       {
         "name": "Bacon Sandwich",
         "calories": 400,
         "type": "breakfast",
-        "icon": "fas fa-bread-slice"
+        "icon": "fas fa-bread-slice",
+        "protein": 15
       },
       {
         "name": "Oreo Mini",
         "calories": 340,
         "type": "dessert",
-        "icon": "fas fa-cookie"
+        "icon": "fas fa-cookie",
+        "protein": 4
       },
       {
         "name": "Donut",
         "calories": 240,
         "type": "dessert",
-        "icon": "fas fa-circle-dot"
+        "icon": "fas fa-circle-dot",
+        "protein": 4
       },
       {
         "name": "Wrap",
         "calories": 210,
         "type": "breakfast",
-        "icon": "fas fa-scroll"
+        "icon": "fas fa-scroll",
+        "protein": 10
       },
       {
         "name": "Popsicle",
         "calories": 40,
         "type": "dessert",
-        "icon": "fas fa-ice-cream"
+        "icon": "fas fa-ice-cream",
+        "protein": 0
       },
       {
         "name": "Andes Mint",
         "calories": 25,
         "type": "chocolate",
-        "icon": "fas fa-candy-cane"
+        "icon": "fas fa-candy-cane",
+        "protein": 0
       },
       {
         "name": "Hershey Square",
         "calories": 15,
         "type": "chocolate",
-        "icon": "fas fa-square"
+        "icon": "fas fa-square",
+        "protein": 0
       },
       {
         "name": "Corona Light",
         "calories": 100,
         "type": "beer",
-        "icon": "fas fa-beer-mug-empty"
+        "icon": "fas fa-beer-mug-empty",
+        "protein": 1
       }
     ]
   }
